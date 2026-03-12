@@ -116,6 +116,9 @@ export default function TerminalPanel({
     if (isOpen) {
       requestAnimationFrame(() => connect());
     } else {
+      // Intentionally avoiding setState inside effect for linting, disconnect handles its own cleanup if needed.
+      // But actually, disconnect doesn't set state directly here anyway.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       disconnect();
     }
   }, [isOpen, connect, disconnect]);

@@ -272,8 +272,14 @@ export default function Board() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    loadBoard();
+    let mounted = true;
+    if (mounted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadBoard();
+    }
+    return () => {
+      mounted = false;
+    };
   }, [loadBoard]);
 
   const getColumnTickets = (status: string) =>

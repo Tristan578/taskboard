@@ -12,29 +12,22 @@ func TestFormatIssueBody(t *testing.T) {
 		AcceptanceCriteria: "Given... When... Then...",
 		TechnicalDetails:   "Change X and Y",
 		TestingDetails:     "Write test Z",
+		LexoRank:           "0000001000",
 	}
 	desc := "This is the description."
 	body := FormatIssueBody(desc, ticket)
 
-	if !contains(body, "player2:") {
-		t.Errorf("Body missing player2 header")
-	}
-	if !contains(body, "user_story: As a user...") {
-		t.Errorf("Body missing user story")
+	if !contains(body, "<!-- player2-metadata:") {
+		t.Errorf("Body missing hidden metadata header")
 	}
 	if !contains(body, desc) {
-		t.Errorf("Body missing description")
+		t.Errorf("Body missing original description")
 	}
 }
 
 func TestParseIssueBody(t *testing.T) {
-	body := `---
-player2:
-  user_story: "As a user..."
-  acceptance_criteria: "Given..."
----
-
-My Description`
+	// New Format
+	body := "My Description\n\n<!-- player2-metadata:eyJ1cyI6IkFzIGEgdXNlci4uLiIsImFjIjoiR2l2ZW4uLi4ifQ== -->"
 
 	desc, meta := ParseIssueBody(body)
 	if desc != "My Description" {

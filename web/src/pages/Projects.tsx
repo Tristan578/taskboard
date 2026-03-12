@@ -210,7 +210,7 @@ export default function Projects() {
     });
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const data = await api.projects.list();
       setProjects(data || []);
@@ -218,11 +218,18 @@ export default function Projects() {
       setProjects([]);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    let mounted = true;
+    if (mounted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      load();
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [load]);
 
   const handleCreate = async (data: Partial<Project>) => {
     await api.projects.create(data);

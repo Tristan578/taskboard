@@ -41,6 +41,7 @@ func setupTestStore(t *testing.T) (*Store, func()) {
 			priority TEXT,
 			due_date DATETIME,
 			position REAL,
+			lexo_rank TEXT,
 			github_issue_number INTEGER,
 			github_last_synced_at DATETIME,
 			github_last_synced_sha TEXT DEFAULT '',
@@ -48,8 +49,50 @@ func setupTestStore(t *testing.T) (*Store, func()) {
 			acceptance_criteria TEXT DEFAULT '',
 			technical_details TEXT DEFAULT '',
 			testing_details TEXT DEFAULT '',
+			is_draft BOOLEAN DEFAULT 0,
+			deleted_at DATETIME,
 			created_at DATETIME,
 			updated_at DATETIME
+		);
+		CREATE TABLE sync_jobs (
+			id TEXT PRIMARY KEY,
+			project_id TEXT,
+			ticket_id TEXT,
+			action TEXT,
+			payload TEXT,
+			status TEXT DEFAULT 'pending',
+			attempts INTEGER DEFAULT 0,
+			last_error TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		);
+		CREATE TABLE teams (
+			id TEXT PRIMARY KEY,
+			name TEXT,
+			color TEXT,
+			created_at DATETIME
+		);
+		CREATE TABLE labels (
+			id TEXT PRIMARY KEY,
+			name TEXT,
+			color TEXT
+		);
+		CREATE TABLE subtasks (
+			id TEXT PRIMARY KEY,
+			ticket_id TEXT,
+			title TEXT,
+			completed BOOLEAN DEFAULT 0,
+			position INTEGER
+		);
+		CREATE TABLE ticket_labels (
+			ticket_id TEXT,
+			label_id TEXT,
+			PRIMARY KEY (ticket_id, label_id)
+		);
+		CREATE TABLE ticket_dependencies (
+			ticket_id TEXT,
+			blocked_by_id TEXT,
+			PRIMARY KEY (ticket_id, blocked_by_id)
 		);
 	`)
 	if err != nil {
@@ -90,25 +133,83 @@ func TestStore_CreateProject(t *testing.T) {
 	}
 }
 
-func TestStore_CreateTicket(t *testing.T) {
+func TestStore_Teams(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	// Create
+	team, err := s.CreateTeam(models.CreateTeamRequest{Name: "Engineering", Color: "#FF0000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// List
+	teams, _ := s.ListTeams()
+	if len(teams) != 1 {
+		t.Errorf("Expected 1 team, got %d", len(teams))
+	}
+
+	// Update
+	newName := "Product"
+	_, _ = s.UpdateTeam(team.ID, models.UpdateTeamRequest{Name: &newName})
+	
+	t2, _ := s.GetTeam(team.ID)
+	if t2.Name != "Product" {
+		t.Errorf("Team name update failed")
+	}
+
+	// Delete
+	_ = s.DeleteTeam(team.ID)
+	teams, _ = s.ListTeams()
+	if len(teams) != 0 {
+		t.Errorf("Delete team failed")
+	}
+}
+
+func TestStore_Labels(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	label, _ := s.CreateLabel(models.CreateLabelRequest{Name: "bug", Color: "red"})
+	labels, _ := s.ListLabels()
+	if len(labels) != 1 {
+		t.Errorf("Expected 1 label")
+	}
+
+	_ = s.DeleteLabel(label.ID)
+}
+
+func TestStore_Subtasks(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	ticket, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
 
-	req := models.CreateTicketRequest{
-		ProjectID:          p.ID,
-		Title:              "Strict Ticket",
-		UserStory:          "As a user...",
-		AcceptanceCriteria: "Given...",
+	st, _ := s.AddSubtask(ticket.ID, models.CreateSubtaskRequest{Title: "Task 1"})
+	if st.Title != "Task 1" {
+		t.Errorf("Subtask creation failed")
 	}
 
-	ticket, err := s.CreateTicket(req)
-	if err != nil {
-		t.Fatalf("Failed to create ticket: %v", err)
+	st2, _ := s.ToggleSubtask(st.ID)
+	if !st2.Completed {
+		t.Errorf("Subtask toggle failed")
 	}
 
-	if ticket.UserStory != req.UserStory || ticket.AcceptanceCriteria != req.AcceptanceCriteria {
-		t.Errorf("Ticket fields mismatch")
+	_ = s.DeleteSubtask(st.ID)
+}
+
+func TestStore_MoveTicket(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+
+	_, _ = s.MoveTicket(t1.ID, models.MoveTicketRequest{Status: "in_progress"})
+	
+	t2, _ := s.GetTicket(t1.ID)
+	if t2.Status != "in_progress" {
+		t.Errorf("Move ticket failed")
 	}
 }

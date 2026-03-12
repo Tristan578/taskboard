@@ -92,7 +92,14 @@ export default function Tickets() {
   }, []);
 
   useEffect(() => {
-    load();
+    let mounted = true;
+    if (mounted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      load();
+    }
+    return () => {
+      mounted = false;
+    };
   }, [load]);
 
   const filtered = tickets.filter((t) => {

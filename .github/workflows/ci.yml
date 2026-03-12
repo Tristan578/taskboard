@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -29,14 +29,47 @@ jobs:
 
       - name: Embed frontend
         run: |
-          mkdir -p cmd/taskboard/web/dist
-          cp -r web/dist/* cmd/taskboard/web/dist/
+          mkdir -p cmd/kanban/web/dist
+          cp -r web/dist/* cmd/kanban/web/dist/
 
       - name: Build binary
-        run: go build -o taskboard ./cmd/taskboard
+        run: go build -o player2-kanban ./cmd/kanban
 
       - name: Verify binary
-        run: ./taskboard --help
+        run: ./player2-kanban --help
 
-      - name: Run Go tests
-        run: go test ./...
+      - name: Run Go linter
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+
+      - name: Run security scanner (gosec)
+        uses: securego/gosec-action@master
+        with:
+          args: ./...
+
+      - name: Run Go tests with coverage
+        run: |
+          go test -coverprofile=coverage.txt -covermode=atomic ./...
+          COVERAGE=$(go tool cover -func=coverage.txt | grep total | awk '{print substr($3, 1, length($3)-1)}')
+          echo "Current coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 100" | bc -l) )); then
+            echo "Coverage is $COVERAGE%, which is below the required 100%."
+            exit 1
+          fi
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint and Typecheck
+        working-directory: web
+        run: npm run lint && npm run build
