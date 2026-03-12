@@ -1,7 +1,7 @@
 .PHONY: build dev frontend clean install
 
-BUILD_DIR := cmd/taskboard
-BINARY := taskboard
+BUILD_DIR := cmd/kanban
+BINARY := player2-kanban
 
 build: frontend
 	go build -o $(BINARY) ./$(BUILD_DIR)

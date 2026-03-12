@@ -1,67 +1,57 @@
-# Contributing to Taskboard
+# Contributing to Player2 Kanban
 
-Thanks for your interest in contributing! Here's how to get started.
+First off, thanks for taking the time to contribute! **Player2 Kanban** is an agent-native enhancement of the original [Taskboard](https://github.com/tcarac/taskboard) project.
+
+## Code of Conduct
+
+This project and everyone participating in it is governed by our Code of Conduct. By participating, you are expected to uphold this code.
+
+## How Can I Contribute?
+
+### Reporting Bugs
+
+- Use the GitHub Issue tracker.
+- Check if the bug has already been reported.
+- If not, create a new issue. Include a clear title and description, as much relevant information as possible, and a code sample or an executable test case demonstrating the expected behavior that is not occurring.
+
+### Suggesting Enhancements
+
+- Use the GitHub Issue tracker.
+- Provide a clear and descriptive title.
+- Describe the current behavior and the behavior you'd like to see instead.
+
+### Pull Requests
+
+1. Fork the repo and create your branch from `main`.
+2. If you've added code that should be tested, add tests!
+3. If you've changed APIs, update the documentation.
+4. Ensure the test suite passes.
+5. Make sure your code lints.
+
+## Attribution
+
+Player2 Kanban is based on [tcarac/taskboard](https://github.com/tcarac/taskboard). We are grateful to the original authors for providing such a solid foundation.
 
 ## Development Setup
 
-1. **Prerequisites**: Go 1.24+, Node.js 22+
-2. Clone the repo:
-   ```bash
-   git clone https://github.com/tcarac/taskboard.git
-   cd taskboard
-   ```
-3. Build:
-   ```bash
-   make build
-   ```
-4. For frontend development:
-   ```bash
-   # Terminal 1: backend
-   go run ./cmd/taskboard start
-
-   # Terminal 2: frontend dev server (hot reload, proxies API to :3010)
-   cd web && npm run dev
-   ```
-
-## Pull Request Process
-
-1. Fork the repo and create a branch from `main`
-2. If you've added functionality, update the README if applicable
-3. Make sure `make build` succeeds
-4. Run `go test ./...` and ensure all tests pass
-5. Open a PR against `main`
-
-## Branch Naming
-
-Use descriptive branch names:
-- `feat/kanban-swimlanes`
-- `fix/ticket-drag-drop`
-- `docs/mcp-setup-guide`
-- `chore/update-deps`
-
-## Commit Messages
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat: add swimlane support to kanban board
-fix: prevent duplicate ticket numbers on concurrent creation
-docs: add MCP setup instructions for Cursor
-chore: upgrade Go to 1.25
+### Backend (Go)
+```bash
+go mod tidy
+go build ./cmd/kanban
 ```
 
-## Reporting Issues
+### Frontend (React)
+```bash
+cd web
+npm install
+npm run dev
+```
 
-- Use the provided issue templates (Bug Report or Feature Request)
-- Include steps to reproduce for bugs
-- Include your OS and `taskboard --help` output
-
-## Code Style
-
-- **Go**: follow standard `gofmt` formatting. No linter overrides.
-- **TypeScript/React**: follow the existing patterns in `web/src/`. No `any` types.
-- **SQL**: use snake_case for column names, uppercase for keywords in migrations.
+### Running Tests
+```bash
+go test ./...
+```
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under its MIT License.

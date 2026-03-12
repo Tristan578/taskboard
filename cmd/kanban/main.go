@@ -4,7 +4,7 @@ import (
 	"embed"
 	"io/fs"
 
-	"github.com/tcarac/taskboard/internal/cli"
+	"github.com/Tristan578/taskboard/internal/cli"
 )
 
 //go:embed web/dist

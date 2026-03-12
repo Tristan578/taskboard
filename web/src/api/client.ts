@@ -6,6 +6,8 @@ export interface Project {
   icon: string;
   color: string;
   status: string;
+  githubRepo?: string;
+  strict: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +44,11 @@ export interface Ticket {
   priority: string;
   dueDate?: string;
   position: number;
+  githubIssueNumber?: number;
+  userStory?: string;
+  acceptanceCriteria?: string;
+  technicalDetails?: string;
+  testingDetails?: string;
   createdAt: string;
   updatedAt: string;
   projectPrefix: string;

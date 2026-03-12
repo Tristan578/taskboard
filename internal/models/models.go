@@ -3,15 +3,18 @@ package models
 import "time"
 
 type Project struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Prefix      string    `json:"prefix"`
-	Description string    `json:"description,omitempty"`
-	Icon        string    `json:"icon,omitempty"`
-	Color       string    `json:"color,omitempty"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	Prefix           string     `json:"prefix"`
+	Description      string     `json:"description,omitempty"`
+	Icon             string     `json:"icon,omitempty"`
+	Color            string     `json:"color,omitempty"`
+	Status           string     `json:"status"`
+	GitHubRepo       string     `json:"githubRepo,omitempty"`
+	GitHubLastSynced *time.Time `json:"githubLastSynced,omitempty"`
+	Strict           bool       `json:"strict"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 type Team struct {
@@ -22,18 +25,27 @@ type Team struct {
 }
 
 type Ticket struct {
-	ID          string     `json:"id"`
-	ProjectID   string     `json:"projectId"`
-	TeamID      *string    `json:"teamId,omitempty"`
-	Number      int        `json:"number"`
-	Title       string     `json:"title"`
-	Description string     `json:"description,omitempty"`
-	Status      string     `json:"status"`
-	Priority    string     `json:"priority"`
-	DueDate     *time.Time `json:"dueDate,omitempty"`
-	Position    float64    `json:"position"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID                 string     `json:"id"`
+	ProjectID          string     `json:"projectId"`
+	TeamID             *string    `json:"teamId,omitempty"`
+	Number             int        `json:"number"`
+	Title              string     `json:"title"`
+	Description        string     `json:"description,omitempty"`
+	Status             string     `json:"status"`
+	Priority           string     `json:"priority"`
+	DueDate            *time.Time `json:"dueDate,omitempty"`
+	Position           float64    `json:"position"`
+	LexoRank           string     `json:"lexoRank"`
+	GitHubIssueNumber  *int       `json:"githubIssueNumber,omitempty"`
+	GitHubLastSyncedAt *time.Time `json:"githubLastSyncedAt,omitempty"`
+	GitHubLastSyncedSHA string     `json:"githubLastSyncedSha,omitempty"`
+	UserStory          string     `json:"userStory,omitempty"`
+	AcceptanceCriteria string     `json:"acceptanceCriteria,omitempty"`
+	TechnicalDetails   string     `json:"technicalDetails,omitempty"`
+	TestingDetails     string     `json:"testingDetails,omitempty"`
+	IsDraft            bool       `json:"isDraft"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
 
 	// Populated fields (not stored directly)
 	ProjectPrefix string    `json:"projectPrefix,omitempty"`
@@ -106,6 +118,8 @@ type CreateProjectRequest struct {
 	Description string `json:"description,omitempty"`
 	Icon        string `json:"icon,omitempty"`
 	Color       string `json:"color,omitempty"`
+	GitHubRepo  string `json:"githubRepo,omitempty"`
+	Strict      bool   `json:"strict"`
 }
 
 type UpdateProjectRequest struct {
@@ -115,6 +129,8 @@ type UpdateProjectRequest struct {
 	Icon        *string `json:"icon,omitempty"`
 	Color       *string `json:"color,omitempty"`
 	Status      *string `json:"status,omitempty"`
+	GitHubRepo  *string `json:"githubRepo,omitempty"`
+	Strict      *bool   `json:"strict,omitempty"`
 }
 
 type CreateTeamRequest struct {
@@ -128,27 +144,40 @@ type UpdateTeamRequest struct {
 }
 
 type CreateTicketRequest struct {
-	ProjectID   string   `json:"projectId"`
-	TeamID      *string  `json:"teamId,omitempty"`
-	Title       string   `json:"title"`
-	Description string   `json:"description,omitempty"`
-	Status      string   `json:"status,omitempty"`
-	Priority    string   `json:"priority,omitempty"`
-	DueDate     *string  `json:"dueDate,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
-	BlockedBy   []string `json:"blockedBy,omitempty"`
+	ProjectID          string   `json:"projectId"`
+	TeamID             *string  `json:"teamId,omitempty"`
+	Title              string   `json:"title"`
+	Description        string   `json:"description,omitempty"`
+	Status             string   `json:"status,omitempty"`
+	Priority           string   `json:"priority,omitempty"`
+	DueDate            *string  `json:"dueDate,omitempty"`
+	Labels             []string `json:"labels,omitempty"`
+	BlockedBy          []string `json:"blockedBy,omitempty"`
+	UserStory          string   `json:"userStory,omitempty"`
+	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`
+	TechnicalDetails   string   `json:"technicalDetails,omitempty"`
+	TestingDetails     string   `json:"testingDetails,omitempty"`
+	IsDraft            bool     `json:"isDraft"`
 }
 
 type UpdateTicketRequest struct {
-	TeamID      *string  `json:"teamId,omitempty"`
-	Title       *string  `json:"title,omitempty"`
-	Description *string  `json:"description,omitempty"`
-	Status      *string  `json:"status,omitempty"`
-	Priority    *string  `json:"priority,omitempty"`
-	DueDate     *string  `json:"dueDate,omitempty"`
-	Position    *float64 `json:"position,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
-	BlockedBy   []string `json:"blockedBy,omitempty"`
+	TeamID              *string  `json:"teamId,omitempty"`
+	Title               *string  `json:"title,omitempty"`
+	Description         *string  `json:"description,omitempty"`
+	Status              *string  `json:"status,omitempty"`
+	Priority            *string  `json:"priority,omitempty"`
+	DueDate             *string  `json:"dueDate,omitempty"`
+	Position            *float64 `json:"position,omitempty"`
+	LexoRank            *string  `json:"lexoRank,omitempty"`
+	Labels              []string `json:"labels,omitempty"`
+	BlockedBy           []string `json:"blockedBy,omitempty"`
+	GitHubIssueNumber   *int     `json:"githubIssueNumber,omitempty"`
+	GitHubLastSyncedSHA *string  `json:"githubLastSyncedSha,omitempty"`
+	UserStory           *string  `json:"userStory,omitempty"`
+	AcceptanceCriteria  *string  `json:"acceptanceCriteria,omitempty"`
+	TechnicalDetails    *string  `json:"technicalDetails,omitempty"`
+	TestingDetails      *string  `json:"testingDetails,omitempty"`
+	IsDraft             *bool    `json:"isDraft,omitempty"`
 }
 
 type MoveTicketRequest struct {
@@ -175,4 +204,17 @@ type TicketFilter struct {
 	TeamID    string
 	Status    string
 	Priority  string
+}
+
+type SyncJob struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"projectId"`
+	TicketID  string    `json:"ticketId,omitempty"`
+	Action    string    `json:"action"`
+	Payload   string    `json:"payload,omitempty"`
+	Status    string    `json:"status"`
+	Attempts  int       `json:"attempts"`
+	LastError string    `json:"lastError,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

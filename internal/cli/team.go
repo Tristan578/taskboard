@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
-	"github.com/tcarac/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/models"
 )
 
 func teamCommands() *cobra.Command {
@@ -26,11 +24,11 @@ func teamCommands() *cobra.Command {
 				return err
 			}
 			if len(teams) == 0 {
-				fmt.Println("No teams found.")
+				cmd.Println("No teams found.")
 				return nil
 			}
 			for _, t := range teams {
-				fmt.Printf("%s (%s)\n", t.Name, t.ID)
+				cmd.Printf("%s (%s)\n", t.Name, t.ID)
 			}
 			return nil
 		},
@@ -53,7 +51,7 @@ func teamCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Created team %s (%s)\n", t.Name, t.ID)
+			cmd.Printf("Created team %s (%s)\n", t.Name, t.ID)
 			return nil
 		},
 	}
@@ -71,7 +69,7 @@ func teamCommands() *cobra.Command {
 			if err := store.DeleteTeam(args[0]); err != nil {
 				return err
 			}
-			fmt.Println("Team deleted.")
+			cmd.Println("Team deleted.")
 			return nil
 		},
 	}

@@ -30,11 +30,13 @@ function ProjectModal({
   const [icon, setIcon] = useState(project?.icon || "📋");
   const [color, setColor] = useState(project?.color || DEFAULT_COLORS[0]);
   const [status, setStatus] = useState(project?.status || "active");
+  const [githubRepo, setGithubRepo] = useState(project?.githubRepo || "");
+  const [strict, setStrict] = useState(project?.strict || false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !prefix.trim()) return;
-    onSave({ name, prefix: prefix.toUpperCase(), description, icon, color, status });
+    onSave({ name, prefix: prefix.toUpperCase(), description, icon, color, status, githubRepo, strict });
   };
 
   return (
@@ -98,13 +100,38 @@ function ProjectModal({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              GitHub Repository
+            </label>
+            <input
+              value={githubRepo}
+              onChange={(e) => setGithubRepo(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+             <input
+              type="checkbox"
+              id="strict-mode"
+              checked={strict}
+              onChange={(e) => setStrict(e.target.checked)}
+              className="w-4 h-4 bg-slate-800 border-slate-700 rounded text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="strict-mode" className="text-xs font-medium text-slate-400">
+              Strict Mode (Enforce Gherkin, User Story, Tech Specs)
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">
               Description
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Supports markdown — goals, scope, and context for this project…"
-              rows={12}
+              rows={8}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
             />
           </div>
@@ -183,7 +210,7 @@ export default function Projects() {
     });
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const data = await api.projects.list();
       setProjects(data || []);
@@ -191,11 +218,18 @@ export default function Projects() {
       setProjects([]);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    let mounted = true;
+    if (mounted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      load();
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [load]);
 
   const handleCreate = async (data: Partial<Project>) => {
     await api.projects.create(data);

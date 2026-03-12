@@ -113,7 +113,7 @@ export default function Teams() {
   const [editTeam, setEditTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const data = await api.teams.list();
       setTeams(data || []);
@@ -121,11 +121,18 @@ export default function Teams() {
       setTeams([]);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    let mounted = true;
+    if (mounted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      load();
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [load]);
 
   const handleCreate = async (data: Partial<Team>) => {
     await api.teams.create(data);

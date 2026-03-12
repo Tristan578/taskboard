@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	_ "modernc.org/sqlite"
@@ -56,7 +57,7 @@ func DefaultDBPath() (string, error) {
 		}
 		dataDir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dataDir, "taskboard", "taskboard.db"), nil
+	return filepath.Join(dataDir, "player2-kanban", "player2-kanban.db"), nil
 }
 
 func runMigrations(database *sql.DB) error {
@@ -88,7 +89,7 @@ func runMigrations(database *sql.DB) error {
 			continue
 		}
 
-		content, err := migrationsFS.ReadFile(filepath.Join(migrations, name))
+		content, err := migrationsFS.ReadFile(path.Join(migrations, name))
 		if err != nil {
 			return fmt.Errorf("reading migration %s: %w", name, err)
 		}

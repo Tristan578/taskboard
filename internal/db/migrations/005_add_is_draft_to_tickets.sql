@@ -1,0 +1,1 @@
+ALTER TABLE tickets ADD COLUMN is_draft BOOLEAN DEFAULT 0;

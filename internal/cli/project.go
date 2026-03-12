@@ -2,9 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tcarac/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/github"
+	"github.com/Tristan578/taskboard/internal/models"
 )
 
 func projectCommands() *cobra.Command {
@@ -26,7 +28,7 @@ func projectCommands() *cobra.Command {
 				return err
 			}
 			if len(projects) == 0 {
-				fmt.Println("No projects found.")
+				cmd.Println("No projects found.")
 				return nil
 			}
 			for _, p := range projects {
@@ -34,7 +36,7 @@ func projectCommands() *cobra.Command {
 				if icon == "" {
 					icon = " "
 				}
-				fmt.Printf("%s %s [%s] (%s) - %s\n", icon, p.Name, p.Prefix, p.Status, p.ID)
+				cmd.Printf("%s %s [%s] (%s) - %s\n", icon, p.Name, p.Prefix, p.Status, p.ID)
 			}
 			return nil
 		},
@@ -59,7 +61,7 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Created project %s [%s] (%s)\n", p.Name, p.Prefix, p.ID)
+			cmd.Printf("Created project %s [%s] (%s)\n", p.Name, p.Prefix, p.ID)
 			return nil
 		},
 	}
@@ -85,6 +87,61 @@ func projectCommands() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, createCmd, deleteCmd)
+	linkCmd := &cobra.Command{
+		Use:   "link [id] [repo_url]",
+		Short: "Link a project to a GitHub repository",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openStore()
+			if err != nil {
+				return err
+			}
+			repo := args[1]
+			_, err = store.UpdateProject(args[0], models.UpdateProjectRequest{
+				GitHubRepo: &repo,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Linked project to %s\n", repo)
+			return nil
+		},
+	}
+
+	var syncAsync bool
+	syncCmd := &cobra.Command{
+		Use:   "sync [id]",
+		Short: "Sync project with GitHub issues",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openStore()
+			if err != nil {
+				return err
+			}
+
+			if syncAsync {
+				if err := store.QueueSyncJob(args[0], "", "full_sync", nil); err != nil {
+					return err
+				}
+				fmt.Println("Sync job queued.")
+				return nil
+			}
+
+			token := os.Getenv("GITHUB_TOKEN")
+			if token == "" {
+				return fmt.Errorf("GITHUB_TOKEN environment variable not set")
+			}
+			client := github.NewClient(cmd.Context(), token)
+			fmt.Printf("Syncing project %s with GitHub...\n", args[0])
+			if err := github.SyncProject(cmd.Context(), client, store, args[0]); err != nil {
+				return err
+			}
+			fmt.Println("Sync complete.")
+			return nil
+		},
+	}
+	syncCmd.Flags().BoolVar(&syncAsync, "async", false, "queue the sync job and exit immediately")
+
+	cmd.AddCommand(listCmd, createCmd, deleteCmd, linkCmd, syncCmd)
 	return cmd
 }

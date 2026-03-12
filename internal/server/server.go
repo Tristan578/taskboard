@@ -14,8 +14,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
-	"github.com/tcarac/taskboard/internal/db"
-	"github.com/tcarac/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/db"
+	"github.com/Tristan578/taskboard/internal/models"
 )
 
 type Server struct {
@@ -184,7 +184,13 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteProject(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	p, _ := s.store.GetProject(id)
+	if p == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err := s.store.DeleteProject(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -253,7 +259,13 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteTeam(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	t, _ := s.store.GetTeam(id)
+	if t == nil {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err := s.store.DeleteTeam(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -301,11 +313,27 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "projectId and title are required")
 		return
 	}
+
+	// Strict mode validation (only if not a draft)
+	proj, err := s.store.GetProject(req.ProjectID)
+	if err == nil && proj != nil && proj.Strict && !req.IsDraft {
+		if req.UserStory == "" || req.AcceptanceCriteria == "" {
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: Non-draft tickets require a 'User Story' and 'Acceptance Criteria' (Gherkin).")
+			return
+		}
+	}
+
 	t, err := s.store.CreateTicket(req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Queue sync job if linked AND not a draft
+	if proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
+		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+	}
+
 	writeJSON(w, http.StatusCreated, t)
 }
 
@@ -315,7 +343,35 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	t, err := s.store.UpdateTicket(chi.URLParam(r, "id"), req)
+
+	id := chi.URLParam(r, "id")
+	existing, err := s.store.GetTicket(id)
+	if err != nil || existing == nil {
+		writeError(w, http.StatusNotFound, "ticket not found")
+		return
+	}
+
+	// Strict mode validation
+	var proj *models.Project
+	proj, err = s.store.GetProject(existing.ProjectID)
+	
+	newIsDraft := existing.IsDraft
+	if req.IsDraft != nil { newIsDraft = *req.IsDraft }
+
+	if err == nil && proj != nil && proj.Strict && !newIsDraft {
+		// Check if the update is trying to clear required fields or if they are already empty
+		us := existing.UserStory
+		if req.UserStory != nil { us = *req.UserStory }
+		ac := existing.AcceptanceCriteria
+		if req.AcceptanceCriteria != nil { ac = *req.AcceptanceCriteria }
+
+		if us == "" || ac == "" {
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: Non-draft tickets require a 'User Story' and 'Acceptance Criteria' (Gherkin).")
+			return
+		}
+	}
+
+	t, err := s.store.UpdateTicket(id, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -324,6 +380,12 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
 	}
+
+	// Queue sync job if linked AND not a draft
+	if err == nil && proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
+		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+	}
+
 	writeJSON(w, http.StatusOK, t)
 }
 
@@ -337,20 +399,48 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "status is required")
 		return
 	}
-	t, err := s.store.MoveTicket(chi.URLParam(r, "id"), req)
+
+	id := chi.URLParam(r, "id")
+	existing, err := s.store.GetTicket(id)
+	if err != nil || existing == nil {
+		writeError(w, http.StatusNotFound, "ticket not found")
+		return
+	}
+
+	// If moving to a non-draft state in a strict project, validate
+	proj, err := s.store.GetProject(existing.ProjectID)
+	if err == nil && proj != nil && proj.Strict && existing.IsDraft {
+		if existing.UserStory == "" || existing.AcceptanceCriteria == "" {
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: You must provide a 'User Story' and 'Acceptance Criteria' before moving this ticket out of Draft status.")
+			return
+		}
+	}
+
+	t, err := s.store.MoveTicket(id, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if t == nil {
-		writeError(w, http.StatusNotFound, "ticket not found")
-		return
+
+	// Queue sync job if linked AND moving out of draft
+	if err == nil && proj != nil && proj.GitHubRepo != "" && existing.IsDraft {
+		// Auto-convert to non-draft on move
+		isDraft := false
+		s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
+		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
+
 	writeJSON(w, http.StatusOK, t)
 }
 
 func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteTicket(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	t, _ := s.store.GetTicket(id)
+	if t == nil {
+		writeError(w, http.StatusNotFound, "ticket not found")
+		return
+	}
+	if err := s.store.DeleteTicket(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -376,16 +466,27 @@ func (s *Server) addSubtask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) toggleSubtask(w http.ResponseWriter, r *http.Request) {
-	st, err := s.store.ToggleSubtask(chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	st, err := s.store.ToggleSubtask(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if st == nil {
+		writeError(w, http.StatusNotFound, "subtask not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
 }
 
 func (s *Server) deleteSubtask(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteSubtask(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	st, _ := s.store.GetSubtask(id)
+	if st == nil {
+		writeError(w, http.StatusNotFound, "subtask not found")
+		return
+	}
+	if err := s.store.DeleteSubtask(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -441,7 +542,13 @@ func (s *Server) updateLabel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteLabel(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	l, _ := s.store.GetLabel(id)
+	if l == nil {
+		writeError(w, http.StatusNotFound, "label not found")
+		return
+	}
+	if err := s.store.DeleteLabel(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

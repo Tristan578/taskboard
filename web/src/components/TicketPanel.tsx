@@ -33,12 +33,18 @@ export default function TicketPanel({
   const [priority, setPriority] = useState(ticket.priority);
   const [dueDate, setDueDate] = useState(ticket.dueDate || "");
   const [teamId, setTeamId] = useState(ticket.teamId || "");
+  const [userStory, setUserStory] = useState(ticket.userStory || "");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(ticket.acceptanceCriteria || "");
+  const [technicalDetails, setTechnicalDetails] = useState(ticket.technicalDetails || "");
+  const [testingDetails, setTestingDetails] = useState(ticket.testingDetails || "");
   const [subtasks, setSubtasks] = useState<Subtask[]>(ticket.subtasks || []);
   const [newSubtask, setNewSubtask] = useState("");
   const [dirty, setDirty] = useState(false);
   const [descMode, setDescMode] = useState<"preview" | "write">(description ? "preview" : "write");
 
   const markDirty = () => setDirty(true);
+
+  const project = projects.find((p) => p.id === ticket.projectId);
 
   const handleSave = () => {
     onUpdate(ticket.id, {
@@ -48,6 +54,10 @@ export default function TicketPanel({
       priority,
       dueDate: dueDate || undefined,
       teamId: teamId || undefined,
+      userStory,
+      acceptanceCriteria,
+      technicalDetails,
+      testingDetails,
     });
     setDirty(false);
   };
@@ -75,9 +85,16 @@ export default function TicketPanel({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-slate-900 border-l border-slate-700 overflow-y-auto">
         <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-          <span className="text-xs font-mono text-slate-500">
-            {ticket.projectPrefix}-{ticket.number}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono text-slate-500">
+              {ticket.projectPrefix}-{ticket.number}
+            </span>
+            {ticket.isDraft && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded">
+                Draft
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -158,6 +175,59 @@ export default function TicketPanel({
               </div>
             )}
           </div>
+
+          {(project?.strict || userStory || acceptanceCriteria || technicalDetails || testingDetails) && (
+            <div className="space-y-4 border-t border-slate-800 pt-6">
+               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Agentic Details {project?.strict && <span className="text-blue-500 ml-1">(Strict)</span>}
+              </h4>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">User Story</label>
+                  <textarea
+                    value={userStory}
+                    onChange={(e) => { setUserStory(e.target.value); markDirty(); }}
+                    placeholder="As a... I want... So that..."
+                    className={`w-full bg-slate-800/50 border rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      project?.strict && !userStory ? "border-red-500/50" : "border-slate-700"
+                    }`}
+                  />
+                  {project?.strict && !userStory && <p className="text-[10px] text-red-400 mt-1">Required in Strict Mode</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Acceptance Criteria (Gherkin)</label>
+                  <textarea
+                    value={acceptanceCriteria}
+                    onChange={(e) => { setAcceptanceCriteria(e.target.value); markDirty(); }}
+                    placeholder="Given... When... Then..."
+                    className={`w-full bg-slate-800/50 border rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono ${
+                      project?.strict && !acceptanceCriteria ? "border-red-500/50" : "border-slate-700"
+                    }`}
+                  />
+                  {project?.strict && !acceptanceCriteria && <p className="text-[10px] text-red-400 mt-1">Required in Strict Mode</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Technical Implementation</label>
+                  <textarea
+                    value={technicalDetails}
+                    onChange={(e) => { setTechnicalDetails(e.target.value); markDirty(); }}
+                    placeholder="Proposed architectural changes..."
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Testing Strategy</label>
+                  <textarea
+                    value={testingDetails}
+                    onChange={(e) => { setTestingDetails(e.target.value); markDirty(); }}
+                    placeholder="Unit tests, integration tests..."
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -248,6 +318,21 @@ export default function TicketPanel({
               className="w-full px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
             >
               Save Changes
+            </button>
+          )}
+
+          {ticket.isDraft && (
+            <button
+              onClick={() => {
+                if (project?.strict && (!userStory.trim() || !acceptanceCriteria.trim())) {
+                  alert("Strict mode: User Story and Acceptance Criteria are required before publishing.");
+                  return;
+                }
+                onUpdate(ticket.id, { isDraft: false });
+              }}
+              className="w-full px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors"
+            >
+              Publish Ticket (Sync to GitHub)
             </button>
           )}
 
