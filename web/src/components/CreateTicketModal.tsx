@@ -30,11 +30,11 @@ export default function CreateTicketModal({
 
   const project = projects.find((p) => p.id === projectId);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent, asDraft: boolean = false) => {
     e.preventDefault();
     if (!title.trim() || !projectId) return;
 
-    if (project?.strict && (!userStory.trim() || !acceptanceCriteria.trim())) {
+    if (!asDraft && project?.strict && (!userStory.trim() || !acceptanceCriteria.trim())) {
       alert("Strict mode: User Story and Acceptance Criteria are required.");
       return;
     }
@@ -51,13 +51,14 @@ export default function CreateTicketModal({
       acceptanceCriteria,
       technicalDetails,
       testingDetails,
+      isDraft: asDraft,
     });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => handleSubmit(e)}
         className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-xl p-6 space-y-5"
       >
         <div className="flex items-center justify-between">
@@ -217,6 +218,13 @@ export default function CreateTicketModal({
             className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            onClick={(e) => handleSubmit(e, true)}
+            className="px-4 py-2 text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors"
+          >
+            Save as Draft
           </button>
           <button
             type="submit"

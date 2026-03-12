@@ -35,6 +35,7 @@ type Ticket struct {
 	Priority           string     `json:"priority"`
 	DueDate            *time.Time `json:"dueDate,omitempty"`
 	Position           float64    `json:"position"`
+	LexoRank           string     `json:"lexoRank"`
 	GitHubIssueNumber  *int       `json:"githubIssueNumber,omitempty"`
 	GitHubLastSyncedAt *time.Time `json:"githubLastSyncedAt,omitempty"`
 	GitHubLastSyncedSHA string     `json:"githubLastSyncedSha,omitempty"`
@@ -42,6 +43,7 @@ type Ticket struct {
 	AcceptanceCriteria string     `json:"acceptanceCriteria,omitempty"`
 	TechnicalDetails   string     `json:"technicalDetails,omitempty"`
 	TestingDetails     string     `json:"testingDetails,omitempty"`
+	IsDraft            bool       `json:"isDraft"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	UpdatedAt          time.Time  `json:"updatedAt"`
 
@@ -155,6 +157,7 @@ type CreateTicketRequest struct {
 	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`
 	TechnicalDetails   string   `json:"technicalDetails,omitempty"`
 	TestingDetails     string   `json:"testingDetails,omitempty"`
+	IsDraft            bool     `json:"isDraft"`
 }
 
 type UpdateTicketRequest struct {
@@ -165,6 +168,7 @@ type UpdateTicketRequest struct {
 	Priority            *string  `json:"priority,omitempty"`
 	DueDate             *string  `json:"dueDate,omitempty"`
 	Position            *float64 `json:"position,omitempty"`
+	LexoRank            *string  `json:"lexoRank,omitempty"`
 	Labels              []string `json:"labels,omitempty"`
 	BlockedBy           []string `json:"blockedBy,omitempty"`
 	GitHubIssueNumber   *int     `json:"githubIssueNumber,omitempty"`
@@ -173,6 +177,7 @@ type UpdateTicketRequest struct {
 	AcceptanceCriteria  *string  `json:"acceptanceCriteria,omitempty"`
 	TechnicalDetails    *string  `json:"technicalDetails,omitempty"`
 	TestingDetails      *string  `json:"testingDetails,omitempty"`
+	IsDraft             *bool    `json:"isDraft,omitempty"`
 }
 
 type MoveTicketRequest struct {
@@ -199,4 +204,17 @@ type TicketFilter struct {
 	TeamID    string
 	Status    string
 	Priority  string
+}
+
+type SyncJob struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"projectId"`
+	TicketID  string    `json:"ticketId,omitempty"`
+	Action    string    `json:"action"`
+	Payload   string    `json:"payload,omitempty"`
+	Status    string    `json:"status"`
+	Attempts  int       `json:"attempts"`
+	LastError string    `json:"lastError,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

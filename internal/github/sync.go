@@ -2,71 +2,89 @@ package github
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/Tristan578/taskboard/internal/models"
-	"gopkg.in/yaml.v3"
 )
 
-func indent(s string, n int) string {
-	lines := strings.Split(s, "\n")
-	for i, line := range lines {
-		if line != "" {
-			lines[i] = strings.Repeat(" ", n) + line
-		}
-	}
-	return strings.Join(lines, "\n")
+type Metadata struct {
+	UserStory          string `json:"us,omitempty"`
+	AcceptanceCriteria string `json:"ac,omitempty"`
+	TechnicalDetails   string `json:"td,omitempty"`
+	TestingDetails     string `json:"ts,omitempty"`
+	LexoRank           string `json:"lr,omitempty"`
 }
 
-type Metadata struct {
-	UserStory          string `yaml:"user_story,omitempty"`
-	AcceptanceCriteria string `yaml:"acceptance_criteria,omitempty"`
-	TechnicalDetails   string `yaml:"technical_details,omitempty"`
-	TestingDetails     string `yaml:"testing_details,omitempty"`
-}
+const metadataPrefix = "<!-- player2-metadata:"
+const metadataSuffix = " -->"
+
 func FormatIssueBody(description string, ticket *models.Ticket) string {
 	meta := Metadata{
 		UserStory:          ticket.UserStory,
 		AcceptanceCriteria: ticket.AcceptanceCriteria,
 		TechnicalDetails:   ticket.TechnicalDetails,
 		TestingDetails:     ticket.TestingDetails,
+		LexoRank:           ticket.LexoRank,
 	}
 
-	data, err := yaml.Marshal(meta)
+	data, err := json.Marshal(meta)
 	if err != nil {
 		return description
 	}
 
-	// Wrap in player2: key and indent
-	yamlStr := "player2:\n" + indent(string(data), 2)
-	return fmt.Sprintf("---\n%s---\n\n%s", yamlStr, description)
+	encoded := base64.StdEncoding.EncodeToString(data)
+	comment := fmt.Sprintf("\n\n%s%s%s", metadataPrefix, encoded, metadataSuffix)
+	
+	// Clean existing metadata from description before appending new
+	cleanDesc := stripMetadata(description)
+	return cleanDesc + comment
 }
 
 func ParseIssueBody(body string) (description string, meta Metadata) {
-	if !strings.HasPrefix(body, "---") {
-		return body, Metadata{}
+	// 1. Try to find hidden HTML comment (New Format)
+	if strings.Contains(body, metadataPrefix) {
+		start := strings.Index(body, metadataPrefix)
+		end := strings.Index(body[start:], metadataSuffix)
+		if end != -1 {
+			encoded := body[start+len(metadataPrefix) : start+end]
+			data, err := base64.StdEncoding.DecodeString(encoded)
+			if err == nil {
+				var m Metadata
+				if err := json.Unmarshal(data, &m); err == nil {
+					return strings.TrimSpace(body[:start]), m
+				}
+			}
+		}
 	}
 
-	parts := strings.SplitN(body, "---", 3)
-	if len(parts) < 3 {
-		return body, Metadata{}
+	// 2. Fallback to YAML Frontmatter (Legacy Format for migration)
+	if strings.HasPrefix(body, "---") {
+		parts := strings.SplitN(body, "---", 3)
+		if len(parts) >= 3 {
+			// We won't re-implement full yaml parsing here to avoid bloat, 
+			// just return the desc. The next push will "repair" it to HTML format.
+			return strings.TrimSpace(parts[2]), Metadata{}
+		}
 	}
 
-	yamlContent := parts[1]
-	description = strings.TrimSpace(parts[2])
+	return body, Metadata{}
+}
 
-	var root struct {
-		Player2 Metadata `yaml:"player2"`
+func stripMetadata(body string) string {
+	if idx := strings.Index(body, metadataPrefix); idx != -1 {
+		return strings.TrimSpace(body[:idx])
 	}
-
-	err := yaml.Unmarshal([]byte(yamlContent), &root)
-	if err != nil {
-		return body, Metadata{}
+	// Also strip legacy YAML if present
+	if strings.HasPrefix(body, "---") {
+		parts := strings.SplitN(body, "---", 3)
+		if len(parts) >= 3 {
+			return strings.TrimSpace(parts[2])
+		}
 	}
-
-	return description, root.Player2
+	return body
 }
 
 func SyncProject(ctx context.Context, client *Client, store interface {
@@ -76,6 +94,8 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 	UpdateTicket(id string, req models.UpdateTicketRequest) (*models.Ticket, error)
 	CreateTicket(req models.CreateTicketRequest) (*models.Ticket, error)
 	UpdateProject(id string, req models.UpdateProjectRequest) (*models.Project, error)
+	ListDeletedTickets(projectID string) ([]models.Ticket, error)
+	PurgeDeletedTickets(projectID string) error
 }, projectID string) error {
 	p, err := store.GetProject(projectID)
 	if err != nil || p == nil {
@@ -133,15 +153,17 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 				AcceptanceCriteria: meta.AcceptanceCriteria,
 				TechnicalDetails:   meta.TechnicalDetails,
 				TestingDetails:     meta.TestingDetails,
+				IsDraft:            false,
 			}
 			newTicket, err := store.CreateTicket(req)
 			if err != nil {
 				continue
 			}
 
-			// Update with GH number (CreateTicket doesn't set it)
+			// Update with GH number and Rank
 			store.UpdateTicket(newTicket.ID, models.UpdateTicketRequest{
 				GitHubIssueNumber: &ghIssue.Number,
+				LexoRank:          &meta.LexoRank,
 			})
 		} else {
 			// Update local ticket if GH is newer
@@ -157,6 +179,7 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 					AcceptanceCriteria: &meta.AcceptanceCriteria,
 					TechnicalDetails:   &meta.TechnicalDetails,
 					TestingDetails:     &meta.TestingDetails,
+					LexoRank:           &meta.LexoRank,
 				})
 			}
 		}
@@ -185,11 +208,21 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 		}
 	}
 
-	now := time.Now()
 	store.UpdateProject(projectID, models.UpdateProjectRequest{
 		// GitHubLastSynced: &now, // We'll need to update models to handle time.Time pointer in UpdateRequest if needed
 	})
-	_ = now
+
+	// 5. Sync Deletions (Local -> GitHub)
+	deleted, err := store.ListDeletedTickets(projectID)
+	if err == nil {
+		for _, t := range deleted {
+			if t.GitHubIssueNumber != nil {
+				// Close the issue on GitHub
+				client.UpdateIssue(ctx, owner, repo, *t.GitHubIssueNumber, t.Title, FormatIssueBody(t.Description, &t), "closed")
+			}
+		}
+		store.PurgeDeletedTickets(projectID)
+	}
 
 	return nil
 }

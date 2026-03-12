@@ -108,6 +108,7 @@ func projectCommands() *cobra.Command {
 		},
 	}
 
+	var syncAsync bool
 	syncCmd := &cobra.Command{
 		Use:   "sync [id]",
 		Short: "Sync project with GitHub issues",
@@ -117,6 +118,15 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			if syncAsync {
+				if err := store.QueueSyncJob(args[0], "", "full_sync", nil); err != nil {
+					return err
+				}
+				fmt.Println("Sync job queued.")
+				return nil
+			}
+
 			token := os.Getenv("GITHUB_TOKEN")
 			if token == "" {
 				return fmt.Errorf("GITHUB_TOKEN environment variable not set")
@@ -130,6 +140,7 @@ func projectCommands() *cobra.Command {
 			return nil
 		},
 	}
+	syncCmd.Flags().BoolVar(&syncAsync, "async", false, "queue the sync job and exit immediately")
 
 	cmd.AddCommand(listCmd, createCmd, deleteCmd, linkCmd, syncCmd)
 	return cmd

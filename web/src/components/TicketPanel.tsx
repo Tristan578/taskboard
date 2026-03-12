@@ -85,9 +85,16 @@ export default function TicketPanel({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-slate-900 border-l border-slate-700 overflow-y-auto">
         <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-          <span className="text-xs font-mono text-slate-500">
-            {ticket.projectPrefix}-{ticket.number}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono text-slate-500">
+              {ticket.projectPrefix}-{ticket.number}
+            </span>
+            {ticket.isDraft && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded">
+                Draft
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -311,6 +318,21 @@ export default function TicketPanel({
               className="w-full px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
             >
               Save Changes
+            </button>
+          )}
+
+          {ticket.isDraft && (
+            <button
+              onClick={() => {
+                if (project?.strict && (!userStory.trim() || !acceptanceCriteria.trim())) {
+                  alert("Strict mode: User Story and Acceptance Criteria are required before publishing.");
+                  return;
+                }
+                onUpdate(ticket.id, { isDraft: false });
+              }}
+              className="w-full px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors"
+            >
+              Publish Ticket (Sync to GitHub)
             </button>
           )}
 

@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/db"
+	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/mcp"
 	"github.com/Tristan578/taskboard/internal/server"
-)
-
+	)
 var (
 	port       int
 	foreground bool
@@ -42,6 +42,16 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 				return fmt.Errorf("opening database: %w", err)
 			}
 			store := db.NewStore(database)
+			
+			// Start background worker if GITHUB_TOKEN is set
+			token := os.Getenv("GITHUB_TOKEN")
+			if token != "" {
+				client := github.NewClient(cmd.Context(), token)
+				worker := github.NewWorker(store, client)
+				go worker.Start(cmd.Context())
+				fmt.Println("GitHub Sync Worker started.")
+			}
+
 			srv := server.New(store, webFS)
 			return srv.ListenAndServe(port)
 		},

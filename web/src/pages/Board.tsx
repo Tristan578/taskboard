@@ -103,9 +103,16 @@ function TicketCard({
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-mono text-slate-500">
-          {ticket.projectPrefix}-{ticket.number}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono text-slate-500">
+            {ticket.projectPrefix}-{ticket.number}
+          </span>
+          {ticket.isDraft && (
+            <span className="px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded">
+              Draft
+            </span>
+          )}
+        </div>
         <PriorityBadge priority={ticket.priority} />
       </div>
       <p className="text-sm text-slate-200 leading-snug">{ticket.title}</p>

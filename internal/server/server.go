@@ -15,7 +15,6 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 	"github.com/Tristan578/taskboard/internal/db"
-	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/models"
 )
 
@@ -303,11 +302,11 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Strict mode validation
-	p, err := s.store.GetProject(req.ProjectID)
-	if err == nil && p != nil && p.Strict {
+	// Strict mode validation (only if not a draft)
+	proj, err := s.store.GetProject(req.ProjectID)
+	if err == nil && proj != nil && proj.Strict && !req.IsDraft {
 		if req.UserStory == "" || req.AcceptanceCriteria == "" {
-			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: This project requires a 'User Story' and 'Acceptance Criteria' (Gherkin). Agents: Please ensure you provide these fields in your request.")
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: Non-draft tickets require a 'User Story' and 'Acceptance Criteria' (Gherkin).")
 			return
 		}
 	}
@@ -318,15 +317,9 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger async sync if linked
-	if p != nil && p.GitHubRepo != "" {
-		go func() {
-			token := os.Getenv("GITHUB_TOKEN")
-			if token != "" {
-				client := github.NewClient(r.Context(), token)
-				github.SyncProject(r.Context(), client, s.store, p.ID)
-			}
-		}()
+	// Queue sync job if linked AND not a draft
+	if proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
+		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusCreated, t)
@@ -349,7 +342,11 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 	// Strict mode validation
 	var proj *models.Project
 	proj, err = s.store.GetProject(existing.ProjectID)
-	if err == nil && proj != nil && proj.Strict {
+	
+	newIsDraft := existing.IsDraft
+	if req.IsDraft != nil { newIsDraft = *req.IsDraft }
+
+	if err == nil && proj != nil && proj.Strict && !newIsDraft {
 		// Check if the update is trying to clear required fields or if they are already empty
 		us := existing.UserStory
 		if req.UserStory != nil { us = *req.UserStory }
@@ -357,7 +354,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		if req.AcceptanceCriteria != nil { ac = *req.AcceptanceCriteria }
 
 		if us == "" || ac == "" {
-			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: This project requires a 'User Story' and 'Acceptance Criteria' (Gherkin). Agents: Please ensure you provide these fields in your request.")
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: Non-draft tickets require a 'User Story' and 'Acceptance Criteria' (Gherkin).")
 			return
 		}
 	}
@@ -372,15 +369,9 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger async sync if linked
-	if err == nil && proj != nil && proj.GitHubRepo != "" {
-		go func() {
-			token := os.Getenv("GITHUB_TOKEN")
-			if token != "" {
-				client := github.NewClient(r.Context(), token)
-				github.SyncProject(r.Context(), client, s.store, proj.ID)
-			}
-		}()
+	// Queue sync job if linked AND not a draft
+	if err == nil && proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
+		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -396,15 +387,37 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "status is required")
 		return
 	}
-	t, err := s.store.MoveTicket(chi.URLParam(r, "id"), req)
+
+	id := chi.URLParam(r, "id")
+	existing, err := s.store.GetTicket(id)
+	if err != nil || existing == nil {
+		writeError(w, http.StatusNotFound, "ticket not found")
+		return
+	}
+
+	// If moving to a non-draft state in a strict project, validate
+	proj, err := s.store.GetProject(existing.ProjectID)
+	if err == nil && proj != nil && proj.Strict && existing.IsDraft {
+		if existing.UserStory == "" || existing.AcceptanceCriteria == "" {
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: You must provide a 'User Story' and 'Acceptance Criteria' before moving this ticket out of Draft status.")
+			return
+		}
+	}
+
+	t, err := s.store.MoveTicket(id, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if t == nil {
-		writeError(w, http.StatusNotFound, "ticket not found")
-		return
+
+	// Queue sync job if linked AND moving out of draft
+	if err == nil && proj != nil && proj.GitHubRepo != "" && existing.IsDraft {
+		// Auto-convert to non-draft on move
+		isDraft := false
+		s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
+		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
+
 	writeJSON(w, http.StatusOK, t)
 }
 
