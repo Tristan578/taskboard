@@ -377,6 +377,51 @@ func TestStore_MoveTicket(t *testing.T) {
 	}
 }
 
+func TestStore_Teams_Errors(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_, err := s.GetTeam("nonexistent")
+	if err != nil {
+		t.Errorf("GetTeam should return nil, nil for nonexistent, got %v", err)
+	}
+}
+
+func TestStore_Labels_Errors(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_, err := s.GetLabel("nonexistent")
+	if err != nil {
+		t.Errorf("GetLabel should return nil, nil for nonexistent")
+	}
+}
+
+func TestStore_Subtasks_Errors(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_, err := s.GetSubtask("nonexistent")
+	if err != nil {
+		t.Errorf("GetSubtask should return nil, nil for nonexistent")
+	}
+
+	_, err = s.ToggleSubtask("nonexistent")
+	if err != nil {
+		t.Errorf("ToggleSubtask should return nil, nil for nonexistent")
+	}
+}
+
+func TestStore_UpdateProject_Errors(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_, err := s.UpdateProject("nonexistent", models.UpdateProjectRequest{})
+	if err != nil {
+		t.Errorf("UpdateProject should return nil, nil for nonexistent")
+	}
+}
+
 func TestStore_Filters(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
@@ -403,4 +448,14 @@ func TestStore_Filters(t *testing.T) {
 	// Filter by Priority
 	list, _ = s.ListTickets(models.TicketFilter{Priority: "high"})
 	if len(list) != 1 { t.Errorf("Filter Priority failed") }
+}
+
+func TestStore_UpdateTicket_Errors(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_, err := s.UpdateTicket("nonexistent", models.UpdateTicketRequest{})
+	if err != nil {
+		t.Errorf("UpdateTicket should return nil, nil for nonexistent")
+	}
 }

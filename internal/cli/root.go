@@ -97,15 +97,15 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
-		Short: "Start MCP stdio server for AI assistants",
+		Short: "Start the MCP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			database, err := openDB()
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
 			store := db.NewStore(database)
-			srv := mcp.NewServer(store)
-			return srv.Run()
+			server := mcp.NewServer(store)
+			return server.Run(os.Stdin, os.Stdout)
 		},
 	}
 

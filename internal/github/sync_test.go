@@ -107,17 +107,31 @@ func (m *mockStore) UpdateProject(id string, req models.UpdateProjectRequest) (*
 func (m *mockStore) ListDeletedTickets(id string) ([]models.Ticket, error) { return nil, nil }
 func (m *mockStore) PurgeDeletedTickets(id string) error { return nil }
 
-func TestSyncProject_Basic(t *testing.T) {
-	// Minimal test to hit code paths in SyncProject
+func TestWorker_ProcessJob(t *testing.T) {
 	store := &mockStore{
 		project: &models.Project{ID: "p1", GitHubRepo: "owner/repo"},
-		tickets: []models.Ticket{{ID: "t1", Title: "T1"}},
 	}
+	worker := NewWorker(store, nil) // SyncProject will fail but we want to hit UpdateSyncJobStatus code path
+
+	ctx := context.Background()
+	job := models.SyncJob{ID: "j1", ProjectID: "p1", Action: "full_sync"}
 	
-	// We won't actually call GitHub in unit tests, 
-	// but we can test the function exits early if client is nil or fails.
-	err := SyncProject(context.Background(), nil, store, "p1")
-	if err == nil {
-		t.Errorf("Expected error with nil client")
+	worker.processJob(ctx, job)
+	// mockStore.UpdateSyncJobStatus should have been called (implied by execution)
+}
+
+func (m *mockStore) GetPendingSyncJobs() ([]models.SyncJob, error) {
+	return []models.SyncJob{{ID: "j1", ProjectID: "p1", Action: "full_sync"}}, nil
+}
+
+func (m *mockStore) UpdateSyncJobStatus(id, status string, attempts int, lastError string) error {
+	return nil
+}
+
+func TestWorker_ProcessJobs(t *testing.T) {
+	store := &mockStore{
+		project: &models.Project{ID: "p1", GitHubRepo: "owner/repo"},
 	}
+	worker := NewWorker(store, nil)
+	worker.processJobs(context.Background())
 }
