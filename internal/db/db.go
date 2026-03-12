@@ -56,7 +56,7 @@ func DefaultDBPath() (string, error) {
 		}
 		dataDir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dataDir, "taskboard", "taskboard.db"), nil
+	return filepath.Join(dataDir, "player2-kanban", "player2-kanban.db"), nil
 }
 
 func runMigrations(database *sql.DB) error {

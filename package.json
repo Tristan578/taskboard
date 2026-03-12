@@ -1,0 +1,13 @@
+{
+  "name": "player2-kanban",
+  "version": "1.0.0",
+  "description": "Agent-native local project management with GitHub sync and MCP",
+  "bin": {
+    "player2-kanban": "./bin/player2-kanban"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "author": "Player2 AI",
+  "license": "MIT"
+}

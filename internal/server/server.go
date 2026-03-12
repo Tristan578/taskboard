@@ -14,8 +14,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
-	"github.com/tcarac/taskboard/internal/db"
-	"github.com/tcarac/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/db"
+	"github.com/Tristan578/taskboard/internal/github"
+	"github.com/Tristan578/taskboard/internal/models"
 )
 
 type Server struct {
@@ -301,11 +302,33 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "projectId and title are required")
 		return
 	}
+
+	// Strict mode validation
+	p, err := s.store.GetProject(req.ProjectID)
+	if err == nil && p != nil && p.Strict {
+		if req.UserStory == "" || req.AcceptanceCriteria == "" {
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: This project requires a 'User Story' and 'Acceptance Criteria' (Gherkin). Agents: Please ensure you provide these fields in your request.")
+			return
+		}
+	}
+
 	t, err := s.store.CreateTicket(req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Trigger async sync if linked
+	if p != nil && p.GitHubRepo != "" {
+		go func() {
+			token := os.Getenv("GITHUB_TOKEN")
+			if token != "" {
+				client := github.NewClient(r.Context(), token)
+				github.SyncProject(r.Context(), client, s.store, p.ID)
+			}
+		}()
+	}
+
 	writeJSON(w, http.StatusCreated, t)
 }
 
@@ -315,7 +338,31 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	t, err := s.store.UpdateTicket(chi.URLParam(r, "id"), req)
+
+	id := chi.URLParam(r, "id")
+	existing, err := s.store.GetTicket(id)
+	if err != nil || existing == nil {
+		writeError(w, http.StatusNotFound, "ticket not found")
+		return
+	}
+
+	// Strict mode validation
+	var proj *models.Project
+	proj, err = s.store.GetProject(existing.ProjectID)
+	if err == nil && proj != nil && proj.Strict {
+		// Check if the update is trying to clear required fields or if they are already empty
+		us := existing.UserStory
+		if req.UserStory != nil { us = *req.UserStory }
+		ac := existing.AcceptanceCriteria
+		if req.AcceptanceCriteria != nil { ac = *req.AcceptanceCriteria }
+
+		if us == "" || ac == "" {
+			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: This project requires a 'User Story' and 'Acceptance Criteria' (Gherkin). Agents: Please ensure you provide these fields in your request.")
+			return
+		}
+	}
+
+	t, err := s.store.UpdateTicket(id, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -324,6 +371,18 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
 	}
+
+	// Trigger async sync if linked
+	if err == nil && proj != nil && proj.GitHubRepo != "" {
+		go func() {
+			token := os.Getenv("GITHUB_TOKEN")
+			if token != "" {
+				client := github.NewClient(r.Context(), token)
+				github.SyncProject(r.Context(), client, s.store, proj.ID)
+			}
+		}()
+	}
+
 	writeJSON(w, http.StatusOK, t)
 }
 

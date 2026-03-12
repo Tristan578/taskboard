@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/tcarac/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/models"
 )
 
 func teamCommands() *cobra.Command {

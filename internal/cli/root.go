@@ -12,9 +12,9 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/tcarac/taskboard/internal/db"
-	"github.com/tcarac/taskboard/internal/mcp"
-	"github.com/tcarac/taskboard/internal/server"
+	"github.com/Tristan578/taskboard/internal/db"
+	"github.com/Tristan578/taskboard/internal/mcp"
+	"github.com/Tristan578/taskboard/internal/server"
 )
 
 var (
@@ -25,8 +25,8 @@ var (
 
 func NewRootCmd(webFS fs.FS) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "taskboard",
-		Short: "Local project management with Kanban UI and MCP server",
+		Use:   "player2-kanban",
+		Short: "Agent-native local project management with GitHub sync and MCP",
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to SQLite database file (default: OS config dir)")
 
@@ -51,7 +51,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 	stopCmd := &cobra.Command{
 		Use:   "stop",
-		Short: "Stop the running taskboard server",
+		Short: "Stop the running server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pidPath, err := pidFilePath()
 			if err != nil {
@@ -60,27 +60,27 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 			pid, err := readPID(pidPath)
 			if err != nil {
-				return fmt.Errorf("taskboard is not running")
+				return fmt.Errorf("player2-kanban is not running")
 			}
 
 			process, err := os.FindProcess(pid)
 			if err != nil {
 				os.Remove(pidPath)
-				return fmt.Errorf("taskboard is not running")
+				return fmt.Errorf("player2-kanban is not running")
 			}
 
 			if err := process.Signal(syscall.Signal(0)); err != nil {
 				os.Remove(pidPath)
-				return fmt.Errorf("taskboard is not running (stale pid file removed)")
+				return fmt.Errorf("player2-kanban is not running (stale pid file removed)")
 			}
 
 			if err := process.Signal(syscall.SIGTERM); err != nil {
 				os.Remove(pidPath)
-				return fmt.Errorf("failed to stop taskboard: %w", err)
+				return fmt.Errorf("failed to stop player2-kanban: %w", err)
 			}
 
 			os.Remove(pidPath)
-			fmt.Printf("Taskboard stopped (pid %d)\n", pid)
+			fmt.Printf("Player2 Kanban stopped (pid %d)\n", pid)
 			return nil
 		},
 	}
@@ -131,6 +131,8 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 	root.AddCommand(projectCommands())
 	root.AddCommand(teamCommands())
 	root.AddCommand(ticketCommands())
+	root.AddCommand(hookCommands())
+	root.AddCommand(agentConfigCommands())
 
 	return root
 }
@@ -180,7 +182,7 @@ func daemonize(port int) error {
 		daemonArgs = append([]string{"--db", dbPath}, daemonArgs...)
 	}
 	cmd := exec.Command(exe, daemonArgs...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting daemon: %w", err)
@@ -190,7 +192,7 @@ func daemonize(port int) error {
 		return fmt.Errorf("writing pid file: %w", err)
 	}
 
-	fmt.Printf("Taskboard running at http://localhost:%d (pid %d)\n", port, cmd.Process.Pid)
+	fmt.Printf("Player2 Kanban running at http://localhost:%d (pid %d)\n", port, cmd.Process.Pid)
 	return nil
 }
 
@@ -203,7 +205,7 @@ func pidFilePath() (string, error) {
 		}
 		dataDir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dataDir, "taskboard", "taskboard.pid"), nil
+	return filepath.Join(dataDir, "player2-kanban", "player2-kanban.pid"), nil
 }
 
 func writePID(path string, pid int) error {

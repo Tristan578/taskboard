@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/tcarac/taskboard/internal/db"
-	"github.com/tcarac/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/db"
+	"github.com/Tristan578/taskboard/internal/models"
 )
 
 type MCPServer struct {

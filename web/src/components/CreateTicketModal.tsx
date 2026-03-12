@@ -23,10 +23,22 @@ export default function CreateTicketModal({
   const [priority, setPriority] = useState("medium");
   const [dueDate, setDueDate] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [userStory, setUserStory] = useState("");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
+  const [technicalDetails, setTechnicalDetails] = useState("");
+  const [testingDetails, setTestingDetails] = useState("");
+
+  const project = projects.find((p) => p.id === projectId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !projectId) return;
+
+    if (project?.strict && (!userStory.trim() || !acceptanceCriteria.trim())) {
+      alert("Strict mode: User Story and Acceptance Criteria are required.");
+      return;
+    }
+
     onCreate({
       projectId,
       title,
@@ -35,6 +47,10 @@ export default function CreateTicketModal({
       status: defaultStatus || "todo",
       dueDate: dueDate || undefined,
       teamId: teamId || undefined,
+      userStory,
+      acceptanceCriteria,
+      technicalDetails,
+      testingDetails,
     });
   };
 
@@ -100,6 +116,51 @@ export default function CreateTicketModal({
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
             />
           </div>
+
+          {project?.strict && (
+            <div className="space-y-4 pt-2 border-t border-slate-800">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">User Story*</label>
+                <textarea
+                  value={userStory}
+                  onChange={(e) => setUserStory(e.target.value)}
+                  placeholder="As a... I want... So that..."
+                  className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                    !userStory.trim() ? "border-red-500/50" : "border-slate-700"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Acceptance Criteria (Gherkin)*</label>
+                <textarea
+                  value={acceptanceCriteria}
+                  onChange={(e) => setAcceptanceCriteria(e.target.value)}
+                  placeholder="Given... When... Then..."
+                  className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono ${
+                    !acceptanceCriteria.trim() ? "border-red-500/50" : "border-slate-700"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Technical Implementation</label>
+                <textarea
+                  value={technicalDetails}
+                  onChange={(e) => setTechnicalDetails(e.target.value)}
+                  placeholder="Proposed architectural changes..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Testing Strategy</label>
+                <textarea
+                  value={testingDetails}
+                  onChange={(e) => setTestingDetails(e.target.value)}
+                  placeholder="Unit tests, integration tests..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-4">
             <div>
