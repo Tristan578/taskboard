@@ -565,6 +565,15 @@ func (s *Store) ListLabels() ([]models.Label, error) {
 	return labels, rows.Err()
 }
 
+func (s *Store) GetLabel(id string) (*models.Label, error) {
+	var l models.Label
+	err := s.db.QueryRow("SELECT id, name, color FROM labels WHERE id = ?", id).Scan(&l.ID, &l.Name, &l.Color)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &l, err
+}
+
 func (s *Store) CreateLabel(req models.CreateLabelRequest) (*models.Label, error) {
 	l := models.Label{ID: newID(), Name: req.Name, Color: req.Color}
 	_, err := s.db.Exec("INSERT INTO labels (id, name, color) VALUES (?, ?, ?)", l.ID, l.Name, l.Color)
@@ -572,9 +581,8 @@ func (s *Store) CreateLabel(req models.CreateLabelRequest) (*models.Label, error
 }
 
 func (s *Store) UpdateLabel(id string, req models.UpdateLabelRequest) (*models.Label, error) {
-	var l models.Label
-	err := s.db.QueryRow("SELECT id, name, color FROM labels WHERE id = ?", id).Scan(&l.ID, &l.Name, &l.Color)
-	if err != nil {
+	l, err := s.GetLabel(id)
+	if err != nil || l == nil {
 		return nil, err
 	}
 	if req.Name != nil {
@@ -584,12 +592,21 @@ func (s *Store) UpdateLabel(id string, req models.UpdateLabelRequest) (*models.L
 		l.Color = *req.Color
 	}
 	_, err = s.db.Exec("UPDATE labels SET name=?, color=? WHERE id=?", l.Name, l.Color, l.ID)
-	return &l, err
+	return l, err
 }
 
 func (s *Store) DeleteLabel(id string) error {
 	_, err := s.db.Exec("DELETE FROM labels WHERE id = ?", id)
 	return err
+}
+
+func (s *Store) GetSubtask(id string) (*models.Subtask, error) {
+	var st models.Subtask
+	err := s.db.QueryRow("SELECT id, ticket_id, title, completed, position FROM subtasks WHERE id = ?", id).Scan(&st.ID, &st.TicketID, &st.Title, &st.Completed, &st.Position)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &st, err
 }
 
 func (s *Store) AddSubtask(ticketID string, req models.CreateSubtaskRequest) (*models.Subtask, error) {
@@ -615,6 +632,9 @@ func (s *Store) ToggleSubtask(id string) (*models.Subtask, error) {
 	var st models.Subtask
 	err = s.db.QueryRow("SELECT id, ticket_id, title, completed, position FROM subtasks WHERE id = ?", id).
 		Scan(&st.ID, &st.TicketID, &st.Title, &st.Completed, &st.Position)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	return &st, err
 }
 

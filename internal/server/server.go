@@ -184,7 +184,13 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteProject(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	p, _ := s.store.GetProject(id)
+	if p == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err := s.store.DeleteProject(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -253,7 +259,13 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteTeam(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	t, _ := s.store.GetTeam(id)
+	if t == nil {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err := s.store.DeleteTeam(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -422,7 +434,13 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteTicket(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	t, _ := s.store.GetTicket(id)
+	if t == nil {
+		writeError(w, http.StatusNotFound, "ticket not found")
+		return
+	}
+	if err := s.store.DeleteTicket(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -448,16 +466,27 @@ func (s *Server) addSubtask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) toggleSubtask(w http.ResponseWriter, r *http.Request) {
-	st, err := s.store.ToggleSubtask(chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	st, err := s.store.ToggleSubtask(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if st == nil {
+		writeError(w, http.StatusNotFound, "subtask not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
 }
 
 func (s *Server) deleteSubtask(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteSubtask(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	st, _ := s.store.GetSubtask(id)
+	if st == nil {
+		writeError(w, http.StatusNotFound, "subtask not found")
+		return
+	}
+	if err := s.store.DeleteSubtask(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -513,7 +542,13 @@ func (s *Server) updateLabel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteLabel(chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	l, _ := s.store.GetLabel(id)
+	if l == nil {
+		writeError(w, http.StatusNotFound, "label not found")
+		return
+	}
+	if err := s.store.DeleteLabel(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

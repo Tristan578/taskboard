@@ -97,6 +97,9 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 	ListDeletedTickets(projectID string) ([]models.Ticket, error)
 	PurgeDeletedTickets(projectID string) error
 }, projectID string) error {
+	if client == nil {
+		return fmt.Errorf("github client is nil")
+	}
 	p, err := store.GetProject(projectID)
 	if err != nil || p == nil {
 		return fmt.Errorf("getting project: %w", err)

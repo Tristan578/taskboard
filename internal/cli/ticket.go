@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/models"
 )
@@ -31,12 +29,12 @@ func ticketCommands() *cobra.Command {
 				return err
 			}
 			if len(tickets) == 0 {
-				fmt.Println("No tickets found.")
+				cmd.Println("No tickets found.")
 				return nil
 			}
 			for _, t := range tickets {
 				key := t.DisplayKey()
-				fmt.Printf("[%s] %s - %s (%s, %s)\n", key, t.Title, t.Status, t.Priority, t.ID)
+				cmd.Printf("[%s] %s - %s (%s, %s)\n", key, t.Title, t.Status, t.Priority, t.ID)
 			}
 			return nil
 		},
@@ -70,7 +68,7 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Created ticket %s: %s (%s)\n", t.DisplayKey(), t.Title, t.ID)
+			cmd.Printf("Created ticket %s: %s (%s)\n", t.DisplayKey(), t.Title, t.ID)
 			return nil
 		},
 	}
@@ -96,10 +94,7 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if t == nil {
-				return fmt.Errorf("ticket not found")
-			}
-			fmt.Printf("Moved %s to %s\n", t.DisplayKey(), t.Status)
+			cmd.Printf("Moved %s to %s\n", t.DisplayKey(), t.Status)
 			return nil
 		},
 	}
@@ -118,11 +113,70 @@ func ticketCommands() *cobra.Command {
 			if err := store.DeleteTicket(args[0]); err != nil {
 				return err
 			}
-			fmt.Println("Ticket deleted.")
+			cmd.Println("Ticket deleted.")
 			return nil
 		},
 	}
 
-	cmd.AddCommand(listCmd, createCmd, moveCmd, deleteCmd)
+	subtaskCmd := &cobra.Command{
+		Use:   "subtask",
+		Short: "Manage ticket subtasks",
+	}
+
+	subtaskAddCmd := &cobra.Command{
+		Use:   "add [ticket_id] [title]",
+		Short: "Add a subtask to a ticket",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openStore()
+			if err != nil {
+				return err
+			}
+			st, err := store.AddSubtask(args[0], models.CreateSubtaskRequest{Title: args[1]})
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Created subtask %s (%s)\n", st.Title, st.ID)
+			return nil
+		},
+	}
+
+	subtaskToggleCmd := &cobra.Command{
+		Use:   "toggle [id]",
+		Short: "Toggle subtask completion",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openStore()
+			if err != nil {
+				return err
+			}
+			st, err := store.ToggleSubtask(args[0])
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Subtask %s is now completed: %v\n", st.Title, st.Completed)
+			return nil
+		},
+	}
+
+	subtaskDeleteCmd := &cobra.Command{
+		Use:   "delete [id]",
+		Short: "Delete a subtask",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openStore()
+			if err != nil {
+				return err
+			}
+			if err := store.DeleteSubtask(args[0]); err != nil {
+				return err
+			}
+			cmd.Println("Subtask deleted.")
+			return nil
+		},
+	}
+
+	subtaskCmd.AddCommand(subtaskAddCmd, subtaskToggleCmd, subtaskDeleteCmd)
+	cmd.AddCommand(listCmd, createCmd, moveCmd, deleteCmd, subtaskCmd)
 	return cmd
 }

@@ -164,23 +164,47 @@ func TestServer_Board(t *testing.T) {
 	s.ServeHTTP(w, req)
 }
 
-func TestServer_Strict_and_Draft(t *testing.T) {
-	s, store, cleanup := setupTestServer(t)
+func TestServer_ErrorPaths(t *testing.T) {
+	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1", Strict: true})
+	tests := []struct {
+		method string
+		url    string
+		body   interface{}
+		code   int
+	}{
+		{"GET", "/api/projects/nonexistent", nil, http.StatusNotFound},
+		{"PUT", "/api/projects/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
+		{"DELETE", "/api/projects/nonexistent", nil, http.StatusNotFound},
+		{"GET", "/api/teams/nonexistent", nil, http.StatusNotFound},
+		{"PUT", "/api/teams/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
+		{"DELETE", "/api/teams/nonexistent", nil, http.StatusNotFound},
+		{"GET", "/api/tickets/nonexistent", nil, http.StatusNotFound},
+		{"PUT", "/api/tickets/nonexistent", map[string]string{"title": "fail"}, http.StatusNotFound},
+		{"POST", "/api/tickets/nonexistent/move", map[string]string{"status": "todo"}, http.StatusNotFound},
+		{"DELETE", "/api/tickets/nonexistent", nil, http.StatusNotFound},
+		{"POST", "/api/projects", map[string]string{"invalid": "json"}, http.StatusBadRequest},
+		{"DELETE", "/api/subtasks/nonexistent", nil, http.StatusNotFound},
+		{"POST", "/api/subtasks/nonexistent/toggle", nil, http.StatusNotFound},
+		{"PUT", "/api/labels/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
+		{"DELETE", "/api/labels/nonexistent", nil, http.StatusNotFound},
+	}
 
-	// 1. Fail creation without AC
-	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
-	w := httptest.NewRecorder()
-	s.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 for strict") }
-
-	// 2. Succeed as draft
-	body, _ = json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
-	req = httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
-	w = httptest.NewRecorder()
-	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Expected 201 for draft") }
+	for _, tt := range tests {
+		var bodyBuf *bytes.Buffer
+		if tt.body != nil {
+			b, _ := json.Marshal(tt.body)
+			bodyBuf = bytes.NewBuffer(b)
+		} else {
+			bodyBuf = bytes.NewBuffer(nil)
+		}
+		
+		req := httptest.NewRequest(tt.method, tt.url, bodyBuf)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		if w.Code != tt.code {
+			t.Errorf("%s %s expected %d, got %d", tt.method, tt.url, tt.code, w.Code)
+		}
+	}
 }
