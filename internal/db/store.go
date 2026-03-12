@@ -691,7 +691,7 @@ func (s *Store) QueueSyncJob(projectID, ticketID, action string, payload any) er
 }
 
 func (s *Store) GetPendingSyncJobs() ([]models.SyncJob, error) {
-	rows, err := s.db.Query("SELECT id, project_id, ticket_id, action, payload, status, attempts, last_error, created_at, updated_at FROM sync_jobs WHERE status IN ('pending', 'failed') AND attempts < 5 ORDER BY created_at ASC")
+	rows, err := s.db.Query("SELECT id, project_id, COALESCE(ticket_id, ''), action, COALESCE(payload, ''), status, attempts, COALESCE(last_error, ''), created_at, updated_at FROM sync_jobs WHERE status IN ('pending', 'failed') AND attempts < 5 ORDER BY created_at ASC")
 	if err != nil {
 		return nil, err
 	}

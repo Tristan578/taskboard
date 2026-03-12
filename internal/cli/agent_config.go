@@ -19,7 +19,7 @@ func agentConfigCommands() *cobra.Command {
 
 	installCmd := &cobra.Command{
 		Use:   "install [agent_name]",
-		Short: "Install instructions for a specific agent (cursor, claude, gemini, windsurf, antigravity, copilot)",
+		Short: "Install instructions for a specific agent (cursor, claude, gemini, windsurf, antigravity, copilot, codex)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agent := args[0]
@@ -45,8 +45,10 @@ func agentConfigCommands() *cobra.Command {
 			case "copilot":
 				targetPath = ".github/copilot-instructions.md"
 				os.MkdirAll(".github", 0755)
+			case "codex":
+				targetPath = "AGENTS.md" // OpenAI Codex standard
 			default:
-				return fmt.Errorf("unknown agent: %s. Supported: cursor, claude, gemini, windsurf, antigravity, copilot", agent)
+				return fmt.Errorf("unknown agent: %s. Supported: cursor, claude, gemini, windsurf, antigravity, copilot, codex", agent)
 			}
 
 			if err := os.WriteFile(targetPath, baseContent, 0644); err != nil {

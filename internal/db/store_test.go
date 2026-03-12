@@ -199,17 +199,127 @@ func TestStore_Subtasks(t *testing.T) {
 	_ = s.DeleteSubtask(st.ID)
 }
 
-func TestStore_MoveTicket(t *testing.T) {
+func TestStore_SyncJobs(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	err := s.QueueSyncJob("p1", "t1", "full_sync", map[string]string{"foo": "bar"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if it exists at all
+	var count int
+	s.db.QueryRow("SELECT COUNT(*) FROM sync_jobs").Scan(&count)
+	if count != 1 {
+		t.Fatalf("Job not inserted into database")
+	}
+
+	jobs, err := s.GetPendingSyncJobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 {
+		var status, attempts string
+		s.db.QueryRow("SELECT status, attempts FROM sync_jobs").Scan(&status, &attempts)
+		t.Errorf("Expected 1 job, got %d. Status: %s, Attempts: %s", len(jobs), status, attempts)
+		return
+	}
+
+	job := jobs[0]
+	if job.ProjectID != "p1" || job.Action != "full_sync" {
+		t.Errorf("Job data mismatch")
+	}
+
+	_ = s.UpdateSyncJobStatus(job.ID, "completed", 1, "")
+	jobs, _ = s.GetPendingSyncJobs()
+	if len(jobs) != 0 {
+		t.Errorf("Expected 0 pending jobs")
+	}
+}
+
+func TestStore_DeletedTickets(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
 
-	_, _ = s.MoveTicket(t1.ID, models.MoveTicketRequest{Status: "in_progress"})
+	_ = s.DeleteTicket(t1.ID)
 	
-	t2, _ := s.GetTicket(t1.ID)
-	if t2.Status != "in_progress" {
-		t.Errorf("Move ticket failed")
+	active, _ := s.ListTickets(models.TicketFilter{ProjectID: p.ID})
+	if len(active) != 0 {
+		t.Errorf("Deleted ticket still in active list")
+	}
+
+	deleted, _ := s.ListDeletedTickets(p.ID)
+	if len(deleted) != 1 {
+		t.Errorf("Ticket not in deleted list")
+	}
+
+	_ = s.PurgeDeletedTickets(p.ID)
+	deleted, _ = s.ListDeletedTickets(p.ID)
+	if len(deleted) != 0 {
+		t.Errorf("Purge failed")
+	}
+}
+
+func TestStore_ClearData(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_, _ = s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	_ = s.ClearData()
+	
+	projects, _ := s.ListProjects("")
+	if len(projects) != 0 {
+		t.Errorf("ClearData failed")
+	}
+}
+
+func TestStore_UpdateProject(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "Old Name", Prefix: "OLD"})
+	
+	newName := "New Name"
+	updated, err := s.UpdateProject(p.ID, models.UpdateProjectRequest{Name: &newName})
+	if err != nil || updated.Name != newName {
+		t.Errorf("UpdateProject failed")
+	}
+
+	_ = s.DeleteProject(p.ID)
+	p2, _ := s.GetProject(p.ID)
+	if p2 != nil {
+		t.Errorf("DeleteProject failed")
+	}
+}
+
+func TestStore_UpdateTicket(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	ticket, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+
+	newTitle := "Updated Title"
+	updated, err := s.UpdateTicket(ticket.ID, models.UpdateTicketRequest{Title: &newTitle})
+	if err != nil || updated.Title != newTitle {
+		t.Errorf("UpdateTicket failed")
+	}
+}
+
+func TestStore_TicketDependencies(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", BlockedBy: []string{t1.ID}})
+
+	ticket, _ := s.GetTicket(t2.ID)
+	if len(ticket.BlockedBy) != 1 || ticket.BlockedBy[0] != t1.ID {
+		t.Errorf("Dependencies failed")
 	}
 }

@@ -38,8 +38,49 @@ func TestParseIssueBody(t *testing.T) {
 	}
 }
 
+func TestParseRepo(t *testing.T) {
+	tests := []struct {
+		url   string
+		owner string
+		repo  string
+	}{
+		{"https://github.com/owner/repo", "owner", "repo"},
+		{"https://github.com/owner/repo.git", "owner", "repo"},
+		{"git@github.com:owner/repo.git", "owner", "repo"},
+		{"owner/repo", "owner", "repo"},
+	}
+
+	for _, tt := range tests {
+		o, r, err := ParseRepo(tt.url)
+		if err != nil || o != tt.owner || r != tt.repo {
+			t.Errorf("ParseRepo(%s) = (%s, %s), want (%s, %s)", tt.url, o, r, tt.owner, tt.repo)
+		}
+	}
+}
+
+func TestMapGHStateToStatus(t *testing.T) {
+	if mapGHStateToStatus("CLOSED", nil) != "done" {
+		t.Errorf("CLOSED should be done")
+	}
+	if mapGHStateToStatus("OPEN", []string{"in-progress"}) != "in_progress" {
+		t.Errorf("OPEN with in-progress label should be in_progress")
+	}
+	if mapGHStateToStatus("OPEN", nil) != "todo" {
+		t.Errorf("OPEN should be todo")
+	}
+}
+
+func TestMapStatusToGHState(t *testing.T) {
+	if mapStatusToGHState("done") != "closed" {
+		t.Errorf("done should be closed")
+	}
+	if mapStatusToGHState("todo") != "open" {
+		t.Errorf("todo should be open")
+	}
+}
+
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || find(s, substr) >= 0)
+	return len(s) >= len(substr) && (find(s, substr) >= 0)
 }
 
 func find(s, substr string) int {
