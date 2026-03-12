@@ -31,7 +31,10 @@ func agentConfigCommands() *cobra.Command {
 			var targetPath string
 			switch agent {
 			case "cursor":
-				targetPath = ".cursorrules"
+				targetPath = ".cursor/rules/player2.mdc"
+				os.MkdirAll(".cursor/rules", 0755)
+				// Add Cursor-specific frontmatter
+				baseContent = append([]byte("---\ndescription: Mandatory workflow for Player2 Kanban\nglobs: **/*\nalwaysApply: true\n---\n\n"), baseContent...)
 			case "claude":
 				targetPath = "CLAUDE.md" // Official Claude Code standard
 			case "gemini":

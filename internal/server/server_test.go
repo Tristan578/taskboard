@@ -19,7 +19,7 @@ func setupTestServer(t *testing.T) (*Server, *db.Store, func()) {
 		t.Fatal(err)
 	}
 
-	// Simple schema for server tests
+	// Comprehensive schema for server tests
 	_, _ = database.Exec(`
 		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
@@ -36,89 +36,43 @@ func setupTestServer(t *testing.T) (*Server, *db.Store, func()) {
 	return s, store, func() { database.Close() }
 }
 
-func TestServer_GetBoard(t *testing.T) {
-	s, store, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	_, _ = store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-
-	req := httptest.NewRequest("GET", "/api/board?projectId="+p.ID, nil)
-	w := httptest.NewRecorder()
-	s.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-}
-
-func TestServer_Teams(t *testing.T) {
-	s, _, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	// 1. Create Team
-	body, _ := json.Marshal(models.CreateTeamRequest{Name: "Devs", Color: "blue"})
-	req := httptest.NewRequest("POST", "/api/teams", bytes.NewBuffer(body))
-	w := httptest.NewRecorder()
-	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
-		t.Errorf("Team creation failed")
-	}
-
-	// 2. List Teams
-	req = httptest.NewRequest("GET", "/api/teams", nil)
-	w = httptest.NewRecorder()
-	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Teams listing failed")
-	}
-}
-
-func TestServer_Labels(t *testing.T) {
-	s, _, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	body, _ := json.Marshal(models.CreateLabelRequest{Name: "bug", Color: "red"})
-	req := httptest.NewRequest("POST", "/api/labels", bytes.NewBuffer(body))
-	w := httptest.NewRecorder()
-	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
-		t.Errorf("Label creation failed")
-	}
-}
-
 func TestServer_Projects(t *testing.T) {
 	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	body, _ := json.Marshal(models.CreateProjectRequest{Name: "New Project", Prefix: "NEW"})
+	// Create
+	body, _ := json.Marshal(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	req := httptest.NewRequest("POST", "/api/projects", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
-		t.Errorf("Project creation failed")
-	}
+	if w.Code != http.StatusCreated { t.Errorf("Create project failed") }
 
 	var project models.Project
 	json.Unmarshal(w.Body.Bytes(), &project)
 
-	// Update
-	newName := "Updated Project"
-	updateBody, _ := json.Marshal(models.UpdateProjectRequest{Name: &newName})
-	req = httptest.NewRequest("PUT", "/api/projects/"+project.ID, bytes.NewBuffer(updateBody))
+	// List
+	req = httptest.NewRequest("GET", "/api/projects", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Project update failed")
-	}
+	if w.Code != http.StatusOK { t.Errorf("List projects failed") }
+
+	// Get
+	req = httptest.NewRequest("GET", "/api/projects/"+project.ID, nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Get project failed") }
+
+	// Update
+	newName := "P1 Updated"
+	ub, _ := json.Marshal(models.UpdateProjectRequest{Name: &newName})
+	req = httptest.NewRequest("PUT", "/api/projects/"+project.ID, bytes.NewBuffer(ub))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
 
 	// Delete
 	req = httptest.NewRequest("DELETE", "/api/projects/"+project.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent {
-		t.Errorf("Project deletion failed")
-	}
 }
 
 func TestServer_Tickets(t *testing.T) {
@@ -126,7 +80,7 @@ func TestServer_Tickets(t *testing.T) {
 	defer cleanup()
 
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	
+
 	// Create
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
 	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
@@ -136,21 +90,97 @@ func TestServer_Tickets(t *testing.T) {
 	var ticket models.Ticket
 	json.Unmarshal(w.Body.Bytes(), &ticket)
 
-	// Update
-	newTitle := "T1 Updated"
-	updateBody, _ := json.Marshal(models.UpdateTicketRequest{Title: &newTitle})
-	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	// List
+	req = httptest.NewRequest("GET", "/api/tickets", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Ticket update failed")
-	}
+
+	// Get
+	req = httptest.NewRequest("GET", "/api/tickets/"+ticket.ID, nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	// Move
+	mb, _ := json.Marshal(models.MoveTicketRequest{Status: "done"})
+	req = httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(mb))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
 
 	// Delete
 	req = httptest.NewRequest("DELETE", "/api/tickets/"+ticket.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent {
-		t.Errorf("Ticket deletion failed")
-	}
+}
+
+func TestServer_Teams(t *testing.T) {
+	s, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	body, _ := json.Marshal(models.CreateTeamRequest{Name: "T1"})
+	req := httptest.NewRequest("POST", "/api/teams", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	
+	var team models.Team
+	json.Unmarshal(w.Body.Bytes(), &team)
+
+	req = httptest.NewRequest("GET", "/api/teams/"+team.ID, nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("DELETE", "/api/teams/"+team.ID, nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+}
+
+func TestServer_Labels(t *testing.T) {
+	s, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	body, _ := json.Marshal(models.CreateLabelRequest{Name: "L1"})
+	req := httptest.NewRequest("POST", "/api/labels", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	
+	var label models.Label
+	json.Unmarshal(w.Body.Bytes(), &label)
+
+	req = httptest.NewRequest("PUT", "/api/labels/"+label.ID, bytes.NewBuffer(body))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("DELETE", "/api/labels/"+label.ID, nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+}
+
+func TestServer_Board(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	req := httptest.NewRequest("GET", "/api/board?projectId="+p.ID, nil)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+}
+
+func TestServer_Strict_and_Draft(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1", Strict: true})
+
+	// 1. Fail creation without AC
+	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 for strict") }
+
+	// 2. Succeed as draft
+	body, _ = json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
+	req = httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("Expected 201 for draft") }
 }

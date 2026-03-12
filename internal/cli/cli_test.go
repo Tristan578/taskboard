@@ -73,8 +73,8 @@ func TestCLI_AgentConfig(t *testing.T) {
 		t.Fatalf("agent-config command failed: %v", err)
 	}
 	
-	if _, err := os.Stat(".cursorrules"); os.IsNotExist(err) {
-		t.Errorf(".cursorrules not created")
+	if _, err := os.Stat(".cursor/rules/player2.mdc"); os.IsNotExist(err) {
+		t.Errorf(".cursor/rules/player2.mdc not created")
 	}
 }
 

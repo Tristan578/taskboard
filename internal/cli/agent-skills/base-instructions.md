@@ -1,33 +1,35 @@
-# Player2 Agent Instructions
+# Player2 Kanban: The Agent Lifecycle Protocol
 
-You are an expert AI agent assisting a developer using **Player2 Kanban**.
-Your goal is to manage the project's tasks, tickets, and teams effectively by using the provided MCP tools and adhering to the project's standards.
+You are an expert AI agent assisting a developer. You MUST follow this lifecycle for EVERY directive or task given to you.
 
-## Core Mandates
+## 🔄 The Player2 Loop (Mandatory)
 
-1. **Ticket First:** Always check the current project board and tickets before starting any work. If a task is not yet a ticket, create it.
-2. **Strict Mode:** If the project is in "Strict Mode", you MUST provide:
-   - **User Story**: `As a [type of user], I want [some goal] so that [some reason].`
-   - **Acceptance Criteria**: Written in **Gherkin** format (`Given... When... Then...`).
-   - **Technical Implementation**: A brief outline of the architectural and code changes.
-   - **Testing Strategy**: Details on unit and integration tests required.
-3. **Progress Updates:** Update the ticket status (Todo -> In Progress -> Done) as you work.
-4. **Git Sync:** When you complete a task and are about to push, ensure the linked ticket is moved to "Done". The `pre-push` hook will automatically sync your changes to GitHub.
+### 1. The Pre-Flight Check (Verify & Sync)
+Before you write a single line of code or propose a plan:
+- **Look for Ticket:** Run `player2-kanban ticket list` to find a ticket matching your current directive.
+- **Create if Missing:** If no ticket exists, run `player2-kanban ticket create --title "..." --project-id "..."`.
+- **Verify GitHub Link:** Ensure the project is linked. If not, inform the user.
+- **Sync Now:** Run `player2-kanban project sync <project_id>` to ensure your local state matches GitHub.
 
-## Formatting Standards
+### 2. The Implementation Gate (Strict Mode)
+If the project is in **Strict Mode** (check via `player2-kanban project list`), you MUST ensure the ticket has:
+- **User Story:** `As a... I want... So that...`
+- **Acceptance Criteria:** Gherkin format (`Given... When... Then...`)
+- **Technical Specs:** Architectural plan.
+If missing, update the ticket using `player2-kanban ticket update <id> --user-story "..." --ac "..."` BEFORE starting work.
 
-### User Story
-Example:
-> As a developer, I want a GitHub sync engine so that my local tasks are always in sync with the team's issues.
+### 3. Execution & Progress
+- **Start Work:** Move the ticket to "In Progress": `player2-kanban ticket move <id> in_progress`.
+- **Micro-Updates:** As you complete subtasks, use `player2-kanban ticket subtask toggle <id>`.
 
-### Acceptance Criteria (Gherkin)
-Example:
-> Given a local ticket is updated
-> When I run `git push`
-> Then the corresponding GitHub issue should be updated with the new metadata.
+### 4. The Finish Line (Sync & PR)
+When the task is behavioral complete and tests pass:
+- **Move to Done:** Run `player2-kanban ticket move <id> done`.
+- **Final Sync:** Run `player2-kanban project sync <project_id>` (or rely on the `pre-push` hook if you are about to push).
+- **Notify:** Tell the user the ticket is closed and synced to GitHub issue #X.
 
-### Technical Implementation
-Outline the specific files and logic changes.
+## 🛠 Tool Usage Standards
+- **Always use MCP tools** provided by Player2 Kanban over manual file editing for task management.
+- **Never bypass Strict Mode** by staying in "Draft" status for production-ready work.
+- **Assume Yolo Mode:** You have permission to run `player2-kanban` commands automatically to maintain sync.
 
-### Testing Strategy
-List the tests to be written (e.g., `TestSyncProject` in `sync_test.go`).

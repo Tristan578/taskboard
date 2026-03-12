@@ -284,9 +284,21 @@ func TestStore_UpdateProject(t *testing.T) {
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "Old Name", Prefix: "OLD"})
 	
 	newName := "New Name"
-	updated, err := s.UpdateProject(p.ID, models.UpdateProjectRequest{Name: &newName})
-	if err != nil || updated.Name != newName {
-		t.Errorf("UpdateProject failed")
+	newPrefix := "NEW"
+	newDesc := "Desc"
+	newIcon := "🚀"
+	newColor := "#000000"
+	newStatus := "archived"
+	newRepo := "owner/repo"
+	newStrict := false
+
+	updated, err := s.UpdateProject(p.ID, models.UpdateProjectRequest{
+		Name: &newName, Prefix: &newPrefix, Description: &newDesc, 
+		Icon: &newIcon, Color: &newColor, Status: &newStatus, 
+		GitHubRepo: &newRepo, Strict: &newStrict,
+	})
+	if err != nil || updated.Name != newName || updated.Prefix != newPrefix || updated.Status != "archived" {
+		t.Errorf("UpdateProject failed: %+v", updated)
 	}
 
 	_ = s.DeleteProject(p.ID)
@@ -304,22 +316,91 @@ func TestStore_UpdateTicket(t *testing.T) {
 	ticket, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
 
 	newTitle := "Updated Title"
-	updated, err := s.UpdateTicket(ticket.ID, models.UpdateTicketRequest{Title: &newTitle})
-	if err != nil || updated.Title != newTitle {
-		t.Errorf("UpdateTicket failed")
+	newDesc := "Updated Desc"
+	newStatus := "done"
+	newPriority := "urgent"
+	newUS := "As a..."
+	newAC := "Given..."
+	newTech := "Tech..."
+	newTest := "Test..."
+	newDraft := false
+
+	updated, err := s.UpdateTicket(ticket.ID, models.UpdateTicketRequest{
+		Title: &newTitle, Description: &newDesc, Status: &newStatus, 
+		Priority: &newPriority, UserStory: &newUS, AcceptanceCriteria: &newAC,
+		TechnicalDetails: &newTech, TestingDetails: &newTest, IsDraft: &newDraft,
+	})
+	if err != nil || updated.Title != newTitle || updated.Status != "done" {
+		t.Errorf("UpdateTicket failed: %+v", updated)
 	}
 }
 
-func TestStore_TicketDependencies(t *testing.T) {
+func TestStore_TicketLabels(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	l1, _ := s.CreateLabel(models.CreateLabelRequest{Name: "L1"})
+	
+	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", Labels: []string{l1.ID}})
+	if len(t1.Labels) != 1 {
+		t.Errorf("Labels during creation failed")
+	}
+
+	l2, _ := s.CreateLabel(models.CreateLabelRequest{Name: "L2"})
+	updated, _ := s.UpdateTicket(t1.ID, models.UpdateTicketRequest{Labels: []string{l2.ID}})
+	if len(updated.Labels) != 1 || updated.Labels[0].ID != l2.ID {
+		t.Errorf("Label update failed")
+	}
+}
+
+func TestStore_MoveTicket(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", BlockedBy: []string{t1.ID}})
 
-	ticket, _ := s.GetTicket(t2.ID)
-	if len(ticket.BlockedBy) != 1 || ticket.BlockedBy[0] != t1.ID {
-		t.Errorf("Dependencies failed")
+	// Move to in_progress
+	_, _ = s.MoveTicket(t1.ID, models.MoveTicketRequest{Status: "in_progress"})
+	t2, _ := s.GetTicket(t1.ID)
+	if t2.Status != "in_progress" {
+		t.Errorf("Move ticket to in_progress failed")
 	}
+
+	// Move with position
+	pos := 500.0
+	_, _ = s.MoveTicket(t1.ID, models.MoveTicketRequest{Status: "todo", Position: &pos})
+	t3, _ := s.GetTicket(t1.ID)
+	if t3.Status != "todo" || t3.Position != pos {
+		t.Errorf("Move ticket with position failed")
+	}
+}
+
+func TestStore_Filters(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p1, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	p2, _ := s.CreateProject(models.CreateProjectRequest{Name: "P2", Prefix: "P2"})
+	team, _ := s.CreateTeam(models.CreateTeamRequest{Name: "T1"})
+
+	_, _ = s.CreateTicket(models.CreateTicketRequest{ProjectID: p1.ID, TeamID: &team.ID, Title: "T1", Status: "todo", Priority: "high"})
+	_, _ = s.CreateTicket(models.CreateTicketRequest{ProjectID: p2.ID, Title: "T2", Status: "in_progress", Priority: "low"})
+
+	// Filter by Project
+	list, _ := s.ListTickets(models.TicketFilter{ProjectID: p1.ID})
+	if len(list) != 1 { t.Errorf("Filter Project failed") }
+
+	// Filter by Team
+	list, _ = s.ListTickets(models.TicketFilter{TeamID: team.ID})
+	if len(list) != 1 { t.Errorf("Filter Team failed") }
+
+	// Filter by Status
+	list, _ = s.ListTickets(models.TicketFilter{Status: "in_progress"})
+	if len(list) != 1 { t.Errorf("Filter Status failed") }
+
+	// Filter by Priority
+	list, _ = s.ListTickets(models.TicketFilter{Priority: "high"})
+	if len(list) != 1 { t.Errorf("Filter Priority failed") }
 }

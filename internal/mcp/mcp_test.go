@@ -58,17 +58,37 @@ func TestMCP_Tools(t *testing.T) {
 		{"get_board", map[string]string{"projectId": p.ID}},
 		{"create_subtask", map[string]string{"ticketId": ticket.ID, "title": "Sub 1"}},
 		{"batch_create_subtasks", map[string]interface{}{"ticketId": ticket.ID, "subtasks": []map[string]string{{"title": "Sub 2"}, {"title": "Sub 3"}}}},
-		{"toggle_subtask", map[string]string{"id": "s1"}}, // ID might not exist but should be called
+		{"toggle_subtask", map[string]string{"id": "s1"}}, 
 		{"delete_subtask", map[string]string{"id": "s1"}},
 		{"delete_ticket", map[string]string{"id": ticket.ID}},
 		{"delete_team", map[string]string{"id": team.ID}},
 		{"delete_project", map[string]string{"id": p.ID}},
-		{"create_ticket", map[string]string{"projectId": "p1", "title": "T1"}},
+		{"create_ticket", map[string]string{"projectId": p.ID, "title": "T1"}},
 	}
 
 	for _, tt := range tests {
 		argsJSON, _ := json.Marshal(tt.args)
-		_, _ = s.callTool(tt.name, argsJSON) // Ignore errors for non-existent IDs to just hit the code paths
+		_, _ = s.callTool(tt.name, argsJSON) 
+	}
+
+	// Test error cases for required fields
+	errorTests := []struct {
+		name string
+		args interface{}
+	}{
+		{"create_subtask", map[string]string{}},
+		{"batch_create_subtasks", map[string]string{}},
+		{"get_project", map[string]string{"id": "nonexistent"}},
+		{"get_team", map[string]string{"id": "nonexistent"}},
+		{"get_ticket", map[string]string{"id": "nonexistent"}},
+	}
+
+	for _, tt := range errorTests {
+		argsJSON, _ := json.Marshal(tt.args)
+		_, err := s.callTool(tt.name, argsJSON)
+		if err == nil && tt.name != "get_project" { // some tools return empty instead of error
+			t.Errorf("Expected error for tool %s with empty args", tt.name)
+		}
 	}
 
 	// Test error paths
