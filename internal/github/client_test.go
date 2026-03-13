@@ -20,7 +20,7 @@ func TestClient_GetIssues(t *testing.T) {
 								"title":     "Issue 1",
 								"body":      "Body 1",
 								"state":     "OPEN",
-								"labels":    map[string]interface{}{"nodes": []interface{}{"bug"}},
+								"labels":    map[string]interface{}{"nodes": []interface{}{map[string]interface{}{"name": "bug"}}},
 								"updatedAt": "2024-03-12T10:00:00Z",
 							},
 						},

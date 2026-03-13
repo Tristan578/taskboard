@@ -32,22 +32,22 @@ func agentConfigCommands() *cobra.Command {
 			switch agent {
 			case "cursor":
 				targetPath = ".cursor/rules/player2.mdc"
-				os.MkdirAll(".cursor/rules", 0755)
+				_ = os.MkdirAll(".cursor/rules", 0755)
 				// Add Cursor-specific frontmatter
 				baseContent = append([]byte("---\ndescription: Mandatory workflow for Player2 Kanban\nglobs: **/*\nalwaysApply: true\n---\n\n"), baseContent...)
 			case "claude":
 				targetPath = "CLAUDE.md" // Official Claude Code standard
 			case "gemini":
 				targetPath = ".gemini/GEMINI.md"
-				os.MkdirAll(".gemini", 0755)
+				_ = os.MkdirAll(".gemini", 0755)
 			case "windsurf":
 				targetPath = ".windsurfrules"
 			case "antigravity":
 				targetPath = ".agent/rules/player2.md"
-				os.MkdirAll(".agent/rules", 0755)
+				_ = os.MkdirAll(".agent/rules", 0755)
 			case "copilot":
 				targetPath = ".github/copilot-instructions.md"
-				os.MkdirAll(".github", 0755)
+				_ = os.MkdirAll(".github", 0755)
 			case "codex":
 				targetPath = "AGENTS.md" // OpenAI Codex standard
 			default:

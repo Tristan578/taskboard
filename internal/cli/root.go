@@ -117,7 +117,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if !force {
 				cmd.Print("This will delete all projects, tickets, teams, and labels. Continue? [y/N] ")
 				var answer string
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" {
 					cmd.Println("Aborted.")
 					return nil

@@ -339,7 +339,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 
 	// Queue sync job if linked AND not a draft
 	if proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
-		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusCreated, t)
@@ -395,7 +395,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 
 	// Queue sync job if linked AND not a draft
 	if err == nil && proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
-		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -442,8 +442,8 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 	if err == nil && proj != nil && proj.GitHubRepo != "" && existing.IsDraft {
 		// Auto-convert to non-draft on move
 		isDraft := false
-		s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
-		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+		_, _ = s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
+		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -613,7 +613,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"failed to start terminal"}`))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"failed to start terminal"}`))
 		return
 	}
 	defer ptmx.Close()
@@ -621,8 +621,8 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	var once sync.Once
 	cleanup := func() {
 		once.Do(func() {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		})
 	}
 	defer cleanup()
@@ -652,7 +652,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 
 		switch msgType {
 		case websocket.BinaryMessage:
-			ptmx.Write(msg)
+			_, _ = ptmx.Write(msg)
 		case websocket.TextMessage:
 			var ctrl struct {
 				Type string `json:"type"`
@@ -660,7 +660,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 				Rows uint16 `json:"rows"`
 			}
 			if json.Unmarshal(msg, &ctrl) == nil && ctrl.Type == "resize" {
-				pty.Setsize(ptmx, &pty.Winsize{Cols: ctrl.Cols, Rows: ctrl.Rows})
+				_ = pty.Setsize(ptmx, &pty.Winsize{Cols: ctrl.Cols, Rows: ctrl.Rows})
 			}
 		}
 	}

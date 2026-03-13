@@ -74,9 +74,9 @@ func ticketCommands() *cobra.Command {
 		},
 	}
 	createCmd.Flags().StringVar(&createProject, "project", "", "project ID (required)")
-	createCmd.MarkFlagRequired("project")
+	_ = createCmd.MarkFlagRequired("project")
 	createCmd.Flags().String("title", "", "ticket title (required)")
-	createCmd.MarkFlagRequired("title")
+	_ = createCmd.MarkFlagRequired("title")
 	createCmd.Flags().StringVar(&createPriority, "priority", "medium", "priority (urgent|high|medium|low)")
 	createCmd.Flags().StringVar(&createDue, "due", "", "due date (YYYY-MM-DD)")
 	createCmd.Flags().StringVar(&createTeam, "team", "", "team ID")
@@ -103,7 +103,7 @@ func ticketCommands() *cobra.Command {
 		},
 	}
 	moveCmd.Flags().StringVar(&moveStatus, "status", "", "target status (required)")
-	moveCmd.MarkFlagRequired("status")
+	_ = moveCmd.MarkFlagRequired("status")
 
 	deleteCmd := &cobra.Command{
 		Use:   "delete [id]",

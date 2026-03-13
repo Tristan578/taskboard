@@ -100,9 +100,9 @@ func TestSyncProject_Full(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		} else {
-			json.NewEncoder(w).Encode(map[string]interface{}{"number": 4})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"number": 4})
 		}
 	}))
 	defer ts.Close()
@@ -153,7 +153,7 @@ func TestSyncProject_REST_Failures(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		} else {
 			w.WriteHeader(http.StatusUnauthorized)
 		}
@@ -213,7 +213,7 @@ func TestSyncProject_MissingAndCreateFail(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer ts.Close()
 
