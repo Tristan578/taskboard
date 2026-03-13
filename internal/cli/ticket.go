@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/models"
 )
@@ -94,6 +95,9 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if t == nil {
+				return fmt.Errorf("ticket not found")
+			}
 			cmd.Printf("Moved %s to %s\n", t.DisplayKey(), t.Status)
 			return nil
 		},
@@ -109,6 +113,11 @@ func ticketCommands() *cobra.Command {
 			store, err := openStore()
 			if err != nil {
 				return err
+			}
+			// Check existence for clean output
+			t, _ := store.GetTicket(args[0])
+			if t == nil {
+				return fmt.Errorf("ticket not found")
 			}
 			if err := store.DeleteTicket(args[0]); err != nil {
 				return err
@@ -154,6 +163,9 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if st == nil {
+				return fmt.Errorf("subtask not found")
+			}
 			cmd.Printf("Subtask %s is now completed: %v\n", st.Title, st.Completed)
 			return nil
 		},
@@ -167,6 +179,10 @@ func ticketCommands() *cobra.Command {
 			store, err := openStore()
 			if err != nil {
 				return err
+			}
+			st, _ := store.GetSubtask(args[0])
+			if st == nil {
+				return fmt.Errorf("subtask not found")
 			}
 			if err := store.DeleteSubtask(args[0]); err != nil {
 				return err

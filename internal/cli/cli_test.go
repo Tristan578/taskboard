@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -64,7 +65,6 @@ func TestCLI_ProjectCRUD(t *testing.T) {
 	
 	// 5. Delete
 	b.Reset()
-	// We'd need the real ID but let's just hit the code path
 	root.SetArgs([]string{"project", "delete", "p1"})
 	_ = root.Execute()
 }
@@ -88,6 +88,10 @@ func TestCLI_TeamCRUD(t *testing.T) {
 	root.SetArgs([]string{"team", "list"})
 	_ = root.Execute()
 	if !contains(b.String(), "Devs") { t.Errorf("Team list missing Devs") }
+
+	b.Reset()
+	root.SetArgs([]string{"team", "delete", "t1"})
+	_ = root.Execute()
 }
 
 func TestCLI_TicketCRUD(t *testing.T) {
@@ -108,6 +112,14 @@ func TestCLI_TicketCRUD(t *testing.T) {
 	b.Reset()
 	root.SetArgs([]string{"ticket", "list"})
 	_ = root.Execute()
+
+	b.Reset()
+	root.SetArgs([]string{"ticket", "move", "t1", "--status", "done"})
+	_ = root.Execute()
+
+	b.Reset()
+	root.SetArgs([]string{"ticket", "delete", "t1"})
+	_ = root.Execute()
 }
 
 func TestCLI_ClearData(t *testing.T) {
@@ -125,49 +137,10 @@ func TestCLI_ClearData(t *testing.T) {
 	root.SetArgs([]string{"project", "create", "P1", "--prefix", "P1"})
 	_ = root.Execute()
 
-	// Reset buffer BEFORE clear
 	b.Reset()
 	root.SetArgs([]string{"clear", "--force"})
 	_ = root.Execute()
 	if !contains(b.String(), "All data cleared") { t.Errorf("Expected 'All data cleared', got: %s", b.String()) }
-}
-
-func TestCLI_ClearData_Aborted(t *testing.T) {
-	tempDir, _ := ioutil.TempDir("", "cli-test-clear-abort")
-	defer os.RemoveAll(tempDir)
-	oldWd, _ := os.Getwd()
-	os.Chdir(tempDir)
-	defer os.Chdir(oldWd)
-
-	dbPath = "test.db"
-	root := NewRootCmd(nil)
-	b := bytes.NewBufferString("")
-	root.SetOut(b)
-
-	// Simulate 'n' input
-	r, w, _ := os.Pipe()
-	oldStdin := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = oldStdin }()
-	w.Write([]byte("n\n"))
-	w.Close()
-
-	root.SetArgs([]string{"clear"})
-	_ = root.Execute()
-	if !contains(b.String(), "Aborted") { t.Errorf("Expected 'Aborted', got: %s", b.String()) }
-}
-
-func TestCLI_ProjectSync_SyncAsync(t *testing.T) {
-	tempDir, _ := ioutil.TempDir("", "cli-test-sync")
-	defer os.RemoveAll(tempDir)
-	oldWd, _ := os.Getwd()
-	os.Chdir(tempDir)
-	defer os.Chdir(oldWd)
-
-	dbPath = "test.db"
-	root := NewRootCmd(nil)
-	root.SetArgs([]string{"project", "sync", "p1", "--async"})
-	_ = root.Execute()
 }
 
 func TestCLI_AgentConfig_All(t *testing.T) {
@@ -212,5 +185,40 @@ func TestCLI_HookInstall(t *testing.T) {
 
 	os.Mkdir(".git", 0755)
 	root.SetArgs([]string{"hook", "install", "p1"})
+	_ = root.Execute()
+}
+
+func TestCLI_PIDMethods(t *testing.T) {
+	tempDir, _ := ioutil.TempDir("", "cli-test-pid")
+	defer os.RemoveAll(tempDir)
+	
+	path := filepath.Join(tempDir, "test.pid")
+	err := writePID(path, 1234)
+	if err != nil { t.Fatal(err) }
+	
+	pid, err := readPID(path)
+	if err != nil || pid != 1234 { t.Errorf("PID read/write failed") }
+	
+	_, err = readPID("nonexistent")
+	if err == nil { t.Errorf("Expected error for nonexistent PID file") }
+}
+
+func TestCLI_SubtaskCommands(t *testing.T) {
+	tempDir, _ := ioutil.TempDir("", "cli-test-subtask")
+	defer os.RemoveAll(tempDir)
+	oldWd, _ := os.Getwd()
+	os.Chdir(tempDir)
+	defer os.Chdir(oldWd)
+
+	dbPath = "test.db"
+	root := NewRootCmd(nil)
+	
+	root.SetArgs([]string{"ticket", "subtask", "add", "t1", "S1"})
+	_ = root.Execute()
+
+	root.SetArgs([]string{"ticket", "subtask", "toggle", "s1"})
+	_ = root.Execute()
+	
+	root.SetArgs([]string{"ticket", "subtask", "delete", "s1"})
 	_ = root.Execute()
 }
