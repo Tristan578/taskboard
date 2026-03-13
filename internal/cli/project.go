@@ -66,7 +66,7 @@ func projectCommands() *cobra.Command {
 		},
 	}
 	createCmd.Flags().StringVar(&prefix, "prefix", "", "project prefix (required)")
-	createCmd.MarkFlagRequired("prefix")
+	_ = createCmd.MarkFlagRequired("prefix")
 	createCmd.Flags().StringVar(&icon, "icon", "", "emoji icon")
 	createCmd.Flags().StringVar(&color, "color", "#3B82F6", "hex color")
 

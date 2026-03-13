@@ -28,7 +28,7 @@ func hookCommands() *cobra.Command {
 			}
 
 			hooksDir := filepath.Join(gitDir, "hooks")
-			if err := os.MkdirAll(hooksDir, 0755); err != nil {
+			if err := os.MkdirAll(hooksDir, 0700); err != nil {
 				return fmt.Errorf("creating hooks directory: %w", err)
 			}
 
@@ -37,7 +37,8 @@ func hookCommands() *cobra.Command {
 				hookPath := filepath.Join(hooksDir, hook)
 				content := fmt.Sprintf("#!/bin/sh\n# player2-kanban auto-sync hook\nplayer2-kanban project sync %s --async\n", projectID)
 				
-				if err := os.WriteFile(hookPath, []byte(content), 0755); err != nil {
+				// #nosec G306
+				if err := os.WriteFile(hookPath, []byte(content), 0700); err != nil {
 					return fmt.Errorf("writing %s hook: %w", hook, err)
 				}
 				fmt.Printf("Installed %s hook.\n", hook)

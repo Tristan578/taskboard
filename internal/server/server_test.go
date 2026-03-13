@@ -35,7 +35,7 @@ func setupTestServer(t *testing.T) (*Server, *db.Store, func()) {
 
 	store := db.NewStore(database)
 	s := New(store, nil)
-	return s, store, func() { database.Close() }
+	return s, store, func() { _ = database.Close() }
 }
 
 func TestServer_Projects(t *testing.T) {
@@ -50,7 +50,7 @@ func TestServer_Projects(t *testing.T) {
 	if w.Code != http.StatusCreated { t.Errorf("Create project failed: %d", w.Code) }
 
 	var project models.Project
-	json.Unmarshal(w.Body.Bytes(), &project)
+	_ = json.Unmarshal(w.Body.Bytes(), &project)
 
 	// 2. List
 	req = httptest.NewRequest("GET", "/api/projects", nil)
@@ -93,7 +93,7 @@ func TestServer_Tickets(t *testing.T) {
 	if w.Code != http.StatusCreated { t.Errorf("Create ticket failed") }
 	
 	var ticket models.Ticket
-	json.Unmarshal(w.Body.Bytes(), &ticket)
+	_ = json.Unmarshal(w.Body.Bytes(), &ticket)
 
 	// 2. List
 	req = httptest.NewRequest("GET", "/api/tickets", nil)
@@ -140,7 +140,7 @@ func TestServer_Teams(t *testing.T) {
 	if w.Code != http.StatusCreated { t.Errorf("Create team failed") }
 	
 	var team models.Team
-	json.Unmarshal(w.Body.Bytes(), &team)
+	_ = json.Unmarshal(w.Body.Bytes(), &team)
 
 	req = httptest.NewRequest("GET", "/api/teams", nil)
 	w = httptest.NewRecorder()
@@ -177,7 +177,7 @@ func TestServer_Labels(t *testing.T) {
 	if w.Code != http.StatusCreated { t.Errorf("Create label failed") }
 	
 	var label models.Label
-	json.Unmarshal(w.Body.Bytes(), &label)
+	_ = json.Unmarshal(w.Body.Bytes(), &label)
 
 	req = httptest.NewRequest("GET", "/api/labels", nil)
 	w = httptest.NewRecorder()
@@ -212,7 +212,7 @@ func TestServer_Subtasks(t *testing.T) {
 	if w.Code != http.StatusCreated { t.Errorf("Add subtask failed") }
 	
 	var st models.Subtask
-	json.Unmarshal(w.Body.Bytes(), &st)
+	_ = json.Unmarshal(w.Body.Bytes(), &st)
 
 	// 2. Toggle
 	req = httptest.NewRequest("POST", "/api/subtasks/"+st.ID+"/toggle", nil)
@@ -342,7 +342,7 @@ func TestServer_InternalErrors(t *testing.T) {
 	label, _ := store.CreateLabel(models.CreateLabelRequest{Name: "L", Color: "C"})
 	st, _ := store.AddSubtask(tick.ID, models.CreateSubtaskRequest{Title: "S"})
 
-	store.Close() 
+	_ = store.Close() 
 
 	tests := []struct {
 		method string
@@ -396,16 +396,16 @@ func TestServer_TerminalWS_Full(t *testing.T) {
 	if err != nil { return }
 	
 	// 1. Resize
-	ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"resize","cols":80,"rows":24}`))
+	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"resize","cols":80,"rows":24}`))
 	
 	// 2. Input
-	ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"input","data":"ls\n"}`))
+	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"input","data":"ls\n"}`))
 	
 	// 3. Unknown type
-	ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"unknown"}`))
+	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"unknown"}`))
 	
 	// 4. Invalid JSON
-	ws.WriteMessage(websocket.TextMessage, []byte(`{invalid}`))
+	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{invalid}`))
 	
-	ws.Close()
+	_ = ws.Close()
 }

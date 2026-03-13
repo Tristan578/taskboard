@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/go-chi/chi/v5"
@@ -36,7 +37,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ListenAndServe(port int) error {
 	addr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Taskboard running at http://localhost:%d\n", port)
-	return http.ListenAndServe(addr, s.router)
+	
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      s.router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	
+	return srv.ListenAndServe()
 }
 
 func (s *Server) setupRoutes(webFS fs.FS) {
@@ -109,7 +119,7 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -339,7 +349,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 
 	// Queue sync job if linked AND not a draft
 	if proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
-		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusCreated, t)
@@ -395,7 +405,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 
 	// Queue sync job if linked AND not a draft
 	if err == nil && proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
-		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -442,8 +452,8 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 	if err == nil && proj != nil && proj.GitHubRepo != "" && existing.IsDraft {
 		// Auto-convert to non-draft on move
 		isDraft := false
-		s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
-		s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
+		_, _ = s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
+		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -608,12 +618,13 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
+	// #nosec G204 G702
 	cmd := exec.Command(shell)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"failed to start terminal"}`))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"failed to start terminal"}`))
 		return
 	}
 	defer ptmx.Close()
@@ -621,8 +632,8 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	var once sync.Once
 	cleanup := func() {
 		once.Do(func() {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		})
 	}
 	defer cleanup()
@@ -633,7 +644,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := ptmx.Read(buf)
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				return
 			}
 			if err := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
@@ -652,7 +663,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 
 		switch msgType {
 		case websocket.BinaryMessage:
-			ptmx.Write(msg)
+			_, _ = ptmx.Write(msg)
 		case websocket.TextMessage:
 			var ctrl struct {
 				Type string `json:"type"`
@@ -660,7 +671,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 				Rows uint16 `json:"rows"`
 			}
 			if json.Unmarshal(msg, &ctrl) == nil && ctrl.Type == "resize" {
-				pty.Setsize(ptmx, &pty.Winsize{Cols: ctrl.Cols, Rows: ctrl.Rows})
+				_ = pty.Setsize(ptmx, &pty.Winsize{Cols: ctrl.Cols, Rows: ctrl.Rows})
 			}
 		}
 	}

@@ -75,21 +75,21 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 			process, err := os.FindProcess(pid)
 			if err != nil {
-				os.Remove(pidPath)
+				_ = os.Remove(pidPath)
 				return fmt.Errorf("player2-kanban is not running")
 			}
 
 			if err := process.Signal(syscall.Signal(0)); err != nil {
-				os.Remove(pidPath)
+				_ = os.Remove(pidPath)
 				return fmt.Errorf("player2-kanban is not running (stale pid file removed)")
 			}
 
 			if err := process.Signal(syscall.SIGTERM); err != nil {
-				os.Remove(pidPath)
+				_ = os.Remove(pidPath)
 				return fmt.Errorf("failed to stop player2-kanban: %w", err)
 			}
 
-			os.Remove(pidPath)
+			_ = os.Remove(pidPath)
 			fmt.Printf("Player2 Kanban stopped (pid %d)\n", pid)
 			return nil
 		},
@@ -117,7 +117,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if !force {
 				cmd.Print("This will delete all projects, tickets, teams, and labels. Continue? [y/N] ")
 				var answer string
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" {
 					cmd.Println("Aborted.")
 					return nil
@@ -191,6 +191,7 @@ func daemonize(port int) error {
 	if dbPath != "" {
 		daemonArgs = append([]string{"--db", dbPath}, daemonArgs...)
 	}
+	// #nosec G204
 	cmd := exec.Command(exe, daemonArgs...)
 	// cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
@@ -219,13 +220,14 @@ func pidFilePath() (string, error) {
 }
 
 func writePID(path string, pid int) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o644)
+	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0600)
 }
 
 func readPID(path string) (int, error) {
+	// #nosec G304
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err

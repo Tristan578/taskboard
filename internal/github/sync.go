@@ -164,17 +164,19 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 			}
 
 			// Update with GH number and Rank
-			store.UpdateTicket(newTicket.ID, models.UpdateTicketRequest{
+			if _, err := store.UpdateTicket(newTicket.ID, models.UpdateTicketRequest{
 				GitHubIssueNumber: &ghIssue.Number,
 				LexoRank:          &meta.LexoRank,
-			})
+			}); err != nil {
+				continue
+			}
 		} else {
 			// Update local ticket if GH is newer
 			if ghIssue.UpdatedAt.After(localTicket.UpdatedAt) {
 				desc, meta := ParseIssueBody(ghIssue.Body)
 				status := mapGHStateToStatus(ghIssue.State, ghIssue.Labels)
 
-				store.UpdateTicket(localTicket.ID, models.UpdateTicketRequest{
+				if _, err := store.UpdateTicket(localTicket.ID, models.UpdateTicketRequest{
 					Title:              &ghIssue.Title,
 					Description:        &desc,
 					Status:             &status,
@@ -183,7 +185,9 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 					TechnicalDetails:   &meta.TechnicalDetails,
 					TestingDetails:     &meta.TestingDetails,
 					LexoRank:           &meta.LexoRank,
-				})
+				}); err != nil {
+					continue
+				}
 			}
 		}
 	}
@@ -197,23 +201,27 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 			if err != nil {
 				continue
 			}
-			store.UpdateTicket(localTicket.ID, models.UpdateTicketRequest{
+			if _, err := store.UpdateTicket(localTicket.ID, models.UpdateTicketRequest{
 				GitHubIssueNumber: &num,
-			})
+			}); err != nil {
+				continue
+			}
 		} else {
 			// Update GH issue if local is newer
 			ghIssue, exists := ghMap[*localTicket.GitHubIssueNumber]
 			if exists && localTicket.UpdatedAt.After(ghIssue.UpdatedAt) {
 				body := FormatIssueBody(localTicket.Description, &localTicket)
 				state := mapStatusToGHState(localTicket.Status)
-				client.UpdateIssue(ctx, owner, repo, ghIssue.Number, localTicket.Title, body, state)
+				_ = client.UpdateIssue(ctx, owner, repo, ghIssue.Number, localTicket.Title, body, state)
 			}
 		}
 	}
 
-	store.UpdateProject(projectID, models.UpdateProjectRequest{
-		// GitHubLastSynced: &now, // We'll need to update models to handle time.Time pointer in UpdateRequest if needed
-	})
+	if _, err := store.UpdateProject(projectID, models.UpdateProjectRequest{
+		// GitHubLastSynced: &now, 
+	}); err != nil {
+		return fmt.Errorf("updating project sync status: %w", err)
+	}
 
 	// 5. Sync Deletions (Local -> GitHub)
 	deleted, err := store.ListDeletedTickets(projectID)
@@ -221,10 +229,12 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 		for _, t := range deleted {
 			if t.GitHubIssueNumber != nil {
 				// Close the issue on GitHub
-				client.UpdateIssue(ctx, owner, repo, *t.GitHubIssueNumber, t.Title, FormatIssueBody(t.Description, &t), "closed")
+				_ = client.UpdateIssue(ctx, owner, repo, *t.GitHubIssueNumber, t.Title, FormatIssueBody(t.Description, &t), "closed")
 			}
 		}
-		store.PurgeDeletedTickets(projectID)
+		if err := store.PurgeDeletedTickets(projectID); err != nil {
+			return fmt.Errorf("purging deleted tickets: %w", err)
+		}
 	}
 
 	return nil

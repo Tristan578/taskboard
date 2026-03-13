@@ -32,7 +32,7 @@ func setupTestStore(t *testing.T) (*Store, func()) {
 		t.Fatal(err)
 	}
 
-	return NewStore(db), func() { db.Close() }
+	return NewStore(db), func() { _ = db.Close() }
 }
 
 func TestDB_Lifecycle(t *testing.T) {
@@ -42,14 +42,14 @@ func TestDB_Lifecycle(t *testing.T) {
 	path := filepath.Join(tempDir, "test.db")
 	dbConn, err := OpenAt(path)
 	if err != nil { t.Fatalf("OpenAt failed: %v", err) }
-	dbConn.Close()
+	_ = dbConn.Close()
 
 	oldApp := os.Getenv("APPDATA")
 	os.Setenv("APPDATA", tempDir)
 	defer os.Setenv("APPDATA", oldApp)
 	
 	db2, err := Open()
-	if err == nil { db2.Close() }
+	if err == nil { _ = db2.Close() }
 }
 
 func TestDB_OpenAt_Error(t *testing.T) {
@@ -66,31 +66,31 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	
 	newName := "P2"
-	s.UpdateProject(p.ID, models.UpdateProjectRequest{Name: &newName})
-	s.GetProject(p.ID)
-	s.ListProjects("active")
-	s.ListProjects("")
+	_, _ = s.UpdateProject(p.ID, models.UpdateProjectRequest{Name: &newName})
+	_, _ = s.GetProject(p.ID)
+	_, _ = s.ListProjects("active")
+	_, _ = s.ListProjects("")
 
 	tm, _ := s.CreateTeam(models.CreateTeamRequest{Name: "T1"})
-	s.UpdateTeam(tm.ID, models.UpdateTeamRequest{Name: &newName})
-	s.GetTeam(tm.ID)
-	s.ListTeams()
+	_, _ = s.UpdateTeam(tm.ID, models.UpdateTeamRequest{Name: &newName})
+	_, _ = s.GetTeam(tm.ID)
+	_, _ = s.ListTeams()
 
 	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-	s.UpdateTicket(tick.ID, models.UpdateTicketRequest{Title: &newName})
-	s.GetTicket(tick.ID)
-	s.ListTickets(models.TicketFilter{ProjectID: p.ID})
-	s.MoveTicket(tick.ID, models.MoveTicketRequest{Status: "done"})
+	_, _ = s.UpdateTicket(tick.ID, models.UpdateTicketRequest{Title: &newName})
+	_, _ = s.GetTicket(tick.ID)
+	_, _ = s.ListTickets(models.TicketFilter{ProjectID: p.ID})
+	_, _ = s.MoveTicket(tick.ID, models.MoveTicketRequest{Status: "done"})
 
 	l, _ := s.CreateLabel(models.CreateLabelRequest{Name: "L1", Color: "red"})
-	s.UpdateLabel(l.ID, models.UpdateLabelRequest{Name: &newName})
-	s.GetLabel(l.ID)
-	s.ListLabels()
+	_, _ = s.UpdateLabel(l.ID, models.UpdateLabelRequest{Name: &newName})
+	_, _ = s.GetLabel(l.ID)
+	_, _ = s.ListLabels()
 
 	st, _ := s.AddSubtask(tick.ID, models.CreateSubtaskRequest{Title: "S1"})
-	s.GetSubtask(st.ID)
-	s.ToggleSubtask(st.ID)
-	s.DeleteSubtask(st.ID)
+	_, _ = s.GetSubtask(st.ID)
+	_, _ = s.ToggleSubtask(st.ID)
+	_ = s.DeleteSubtask(st.ID)
 
 	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", Labels: []string{l.ID}, BlockedBy: []string{tick.ID}})
 	
@@ -114,27 +114,27 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 		TeamID: &teamID, Labels: []string{l.ID}, BlockedBy: []string{tick.ID},
 	})
 
-	s.GetBoard(p.ID)
-	s.GetBoard("")
+	_, _ = s.GetBoard(p.ID)
+	_, _ = s.GetBoard("")
 
-	s.QueueSyncJob(p.ID, tick.ID, "sync", nil)
+	_ = s.QueueSyncJob(p.ID, tick.ID, "sync", nil)
 	jobs, _ := s.GetPendingSyncJobs()
-	s.UpdateSyncJobStatus(jobs[0].ID, "failed", 1, "err")
-	s.GetPendingSyncJobs()
+	_ = s.UpdateSyncJobStatus(jobs[0].ID, "failed", 1, "err")
+	_, _ = s.GetPendingSyncJobs()
 
-	s.DeleteTicket(tick.ID)
-	s.ListDeletedTickets(p.ID)
-	s.PurgeDeletedTickets(p.ID)
-	s.DeleteTeam(tm.ID)
-	s.DeleteLabel(l.ID)
-	s.DeleteProject(p.ID)
-	s.ClearData()
+	_ = s.DeleteTicket(tick.ID)
+	_, _ = s.ListDeletedTickets(p.ID)
+	_ = s.PurgeDeletedTickets(p.ID)
+	_ = s.DeleteTeam(tm.ID)
+	_ = s.DeleteLabel(l.ID)
+	_ = s.DeleteProject(p.ID)
+	_ = s.ClearData()
 }
 
 func TestStore_Errors(t *testing.T) {
 	dbConn, _ := sql.Open("sqlite", ":memory:")
 	s := NewStore(dbConn)
-	s.Close() 
+	_ = s.Close() 
 
 	if _, err := s.CreateProject(models.CreateProjectRequest{}); err == nil { t.Errorf("1") }
 	if _, err := s.GetProject("1"); err == nil { t.Errorf("2") }

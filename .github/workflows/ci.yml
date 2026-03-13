@@ -40,7 +40,7 @@ jobs:
         run: ./player2-kanban --help
 
       - name: Run Go linter
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
 

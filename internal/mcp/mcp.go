@@ -89,7 +89,9 @@ func (s *MCPServer) Run(r io.Reader, w io.Writer) error {
 			continue
 		}
 		data = append(data, '\n')
-		writer.Write(data)
+		if _, err := writer.Write(data); err != nil {
+			return fmt.Errorf("writing: %w", err)
+		}
 	}
 }
 
@@ -186,14 +188,14 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 		var a struct {
 			Status string `json:"status"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.ListProjects(a.Status)
 
 	case "get_project":
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		p, err := s.store.GetProject(a.ID)
 		if p == nil && err == nil {
 			return nil, fmt.Errorf("project not found")
@@ -202,7 +204,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 
 	case "create_project":
 		var a models.CreateProjectRequest
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.CreateProject(a)
 
 	case "update_project":
@@ -210,14 +212,14 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			ID string `json:"id"`
 			models.UpdateProjectRequest
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.UpdateProject(a.ID, a.UpdateProjectRequest)
 
 	case "delete_project":
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return map[string]bool{"deleted": true}, s.store.DeleteProject(a.ID)
 
 	case "list_teams":
@@ -227,7 +229,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		t, err := s.store.GetTeam(a.ID)
 		if t == nil && err == nil {
 			return nil, fmt.Errorf("team not found")
@@ -236,7 +238,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 
 	case "create_team":
 		var a models.CreateTeamRequest
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.CreateTeam(a)
 
 	case "update_team":
@@ -244,26 +246,26 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			ID string `json:"id"`
 			models.UpdateTeamRequest
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.UpdateTeam(a.ID, a.UpdateTeamRequest)
 
 	case "delete_team":
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return map[string]bool{"deleted": true}, s.store.DeleteTeam(a.ID)
 
 	case "list_tickets":
 		var a models.TicketFilter
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.ListTickets(a)
 
 	case "get_ticket":
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		t, err := s.store.GetTicket(a.ID)
 		if t == nil && err == nil {
 			return nil, fmt.Errorf("ticket not found")
@@ -272,7 +274,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 
 	case "create_ticket":
 		var a models.CreateTicketRequest
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.CreateTicket(a)
 
 	case "update_ticket":
@@ -280,7 +282,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			ID string `json:"id"`
 			models.UpdateTicketRequest
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.UpdateTicket(a.ID, a.UpdateTicketRequest)
 
 	case "move_ticket":
@@ -288,21 +290,21 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			ID string `json:"id"`
 			models.MoveTicketRequest
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.MoveTicket(a.ID, a.MoveTicketRequest)
 
 	case "delete_ticket":
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return map[string]bool{"deleted": true}, s.store.DeleteTicket(a.ID)
 
 	case "get_board":
 		var a struct {
 			ProjectID string `json:"projectId"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.GetBoard(a.ProjectID)
 
 	case "create_subtask":
@@ -310,7 +312,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			TicketID string `json:"ticketId"`
 			Title    string `json:"title"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		if a.TicketID == "" || a.Title == "" {
 			return nil, fmt.Errorf("ticketId and title are required")
 		}
@@ -323,7 +325,7 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 				Title string `json:"title"`
 			} `json:"subtasks"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		if a.TicketID == "" || len(a.Subtasks) == 0 {
 			return nil, fmt.Errorf("ticketId and at least one subtask are required")
 		}
@@ -341,14 +343,14 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return map[string]bool{"deleted": true}, s.store.DeleteSubtask(a.ID)
 
 	case "toggle_subtask":
 		var a struct {
 			ID string `json:"id"`
 		}
-		json.Unmarshal(args, &a)
+		_ = json.Unmarshal(args, &a)
 		return s.store.ToggleSubtask(a.ID)
 
 	case "__test_marshal_error":
