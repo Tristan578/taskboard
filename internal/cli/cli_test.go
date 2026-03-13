@@ -143,6 +143,34 @@ func TestCLI_AgentConfig_All(t *testing.T) {
 	}
 }
 
+func TestCLI_ErrorPaths(t *testing.T) {
+	root := NewRootCmd(nil)
+	b := bytes.NewBufferString("")
+	root.SetOut(b)
+
+	// 1. Stop when not running
+	root.SetArgs([]string{"stop"})
+	_ = root.Execute()
+	if !contains(b.String(), "not running") {
+		t.Errorf("Expected 'not running' error, got: %s", b.String())
+	}
+
+	// 2. Link with missing args
+	b.Reset()
+	root.SetArgs([]string{"project", "link"})
+	_ = root.Execute()
+	// Cobra handles arg count, just ensure no panic
+
+	// 3. Sync without token
+	b.Reset()
+	os.Setenv("GITHUB_TOKEN", "")
+	root.SetArgs([]string{"project", "sync", "p1"})
+	err := root.Execute()
+	if err == nil {
+		t.Errorf("Expected error for missing GITHUB_TOKEN")
+	}
+}
+
 func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
 }

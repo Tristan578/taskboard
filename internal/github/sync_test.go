@@ -135,3 +135,30 @@ func TestWorker_ProcessJobs(t *testing.T) {
 	worker := NewWorker(store, nil)
 	worker.processJobs(context.Background())
 }
+
+func TestSyncProject_Errors(t *testing.T) {
+	store := &mockStore{}
+	
+	// 1. Project not found
+	store.project = nil
+	err := SyncProject(context.Background(), &Client{}, store, "none")
+	if err == nil { t.Errorf("Expected error for missing project") }
+
+	// 2. Project not linked
+	store.project = &models.Project{ID: "p1", GitHubRepo: ""}
+	err = SyncProject(context.Background(), &Client{}, store, "p1")
+	if err != nil { t.Errorf("SyncProject should return nil if not linked, got %v", err) }
+
+	// 3. Invalid Repo URL
+	store.project = &models.Project{ID: "p1", GitHubRepo: "invalid"}
+	err = SyncProject(context.Background(), &Client{}, store, "p1")
+	if err == nil { t.Errorf("Expected error for invalid repo URL") }
+}
+
+func TestParseIssueBody_Legacy(t *testing.T) {
+	body := "---\nplayer2:\n  user_story: \"old\"\n---\nDesc"
+	desc, _ := ParseIssueBody(body)
+	if desc != "Desc" {
+		t.Errorf("Legacy YAML parsing failed to extract description")
+	}
+}

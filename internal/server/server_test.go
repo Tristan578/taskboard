@@ -154,14 +154,31 @@ func TestServer_Labels(t *testing.T) {
 	s.ServeHTTP(w, req)
 }
 
-func TestServer_Board(t *testing.T) {
+func TestServer_Strict_Enforcement(t *testing.T) {
 	s, store, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	req := httptest.NewRequest("GET", "/api/board?projectId="+p.ID, nil)
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1", Strict: true})
+	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
+
+	// 1. Move draft to todo should fail if missing US/AC
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "todo"})
+	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when moving draft out without specs")
+	}
+
+	// 2. Update to non-draft should fail if missing specs
+	isDraft := false
+	updateBody, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
+	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when converting to non-draft without specs")
+	}
 }
 
 func TestServer_ErrorPaths(t *testing.T) {
@@ -189,6 +206,9 @@ func TestServer_ErrorPaths(t *testing.T) {
 		{"POST", "/api/subtasks/nonexistent/toggle", nil, http.StatusNotFound},
 		{"PUT", "/api/labels/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
 		{"DELETE", "/api/labels/nonexistent", nil, http.StatusNotFound},
+		{"POST", "/api/tickets", map[string]string{"title": "no project"}, http.StatusBadRequest},
+		{"POST", "/api/tickets/t1/subtasks", map[string]string{"notitle": "fail"}, http.StatusBadRequest},
+		{"POST", "/api/teams", map[string]string{"notname": "fail"}, http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
@@ -206,5 +226,13 @@ func TestServer_ErrorPaths(t *testing.T) {
 		if w.Code != tt.code {
 			t.Errorf("%s %s expected %d, got %d", tt.method, tt.url, tt.code, w.Code)
 		}
+	}
+
+	// Test Malformed JSON
+	badJSON := httptest.NewRequest("POST", "/api/projects", bytes.NewBufferString("{invalid"))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, badJSON)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for malformed JSON, got %d", w.Code)
 	}
 }
