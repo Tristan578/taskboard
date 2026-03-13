@@ -115,11 +115,11 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
 			if !force {
-				fmt.Print("This will delete all projects, tickets, teams, and labels. Continue? [y/N] ")
+				cmd.Print("This will delete all projects, tickets, teams, and labels. Continue? [y/N] ")
 				var answer string
 				fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" {
-					fmt.Println("Aborted.")
+					cmd.Println("Aborted.")
 					return nil
 				}
 			}
@@ -131,7 +131,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err := store.ClearData(); err != nil {
 				return fmt.Errorf("clearing data: %w", err)
 			}
-			fmt.Println("All data cleared.")
+			cmd.Println("All data cleared.")
 			return nil
 		},
 	}

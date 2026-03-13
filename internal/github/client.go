@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, token string) *Client {
+	return NewClientWithURLs(ctx, token, "", "")
+}
+
+func NewClientWithURLs(ctx context.Context, token string, restURL, gqlURL string) *Client {
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
@@ -27,9 +32,23 @@ func NewClient(ctx context.Context, token string) *Client {
 	)
 	tc := oauth2.NewClient(ctx, ts)
 
+	restClient := github.NewClient(tc)
+	if restURL != "" {
+		// Ensure trailing slash for go-github
+		if !strings.HasSuffix(restURL, "/") {
+			restURL += "/"
+		}
+		parsed, _ := url.Parse(restURL)
+		restClient.BaseURL = parsed
+	}
+
+	gqlClient := githubv4.NewClient(tc)
+	// githubv4 doesn't support custom URLs easily without a custom HTTP client.
+	// We'll skip GraphQL mocking for now or implement it if needed for 100%.
+
 	return &Client{
-		rest: github.NewClient(tc),
-		gql:  githubv4.NewClient(tc),
+		rest: restClient,
+		gql:  gqlClient,
 	}
 }
 
@@ -37,12 +56,16 @@ func (c *Client) REST() *github.Client {
 	return c.rest
 }
 
+func (c *Client) GQL() *githubv4.Client {
+	return c.gql
+}
+
 type Issue struct {
-	Number int
-	Title  string
-	Body   string
-	State  string // OPEN or CLOSED
-	Labels []string
+	Number    int
+	Title     string
+	Body      string
+	State     string // OPEN or CLOSED
+	Labels    []string
 	UpdatedAt time.Time
 }
 
