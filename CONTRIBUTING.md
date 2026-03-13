@@ -22,11 +22,22 @@ This project and everyone participating in it is governed by our Code of Conduct
 
 ### Pull Requests
 
+The `main` branch is protected. All contributions must follow this process:
+
 1. Fork the repo and create your branch from `main`.
-2. If you've added code that should be tested, add tests!
-3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes.
-5. Make sure your code lints.
+2. Implement your changes following the **Brick Building** standard (tests for both success and failure paths).
+3. Ensure Go statement coverage does not decrease (CI will fail if total coverage drops below 75%).
+4. Verify your changes pass all CI checks:
+   - **Backend**: Go tests, coverage, and `gosec` security scan.
+   - **Frontend**: Linting, type-checking, and build.
+5. All conversations and comments on the PR must be **resolved** before merging.
+6. Use **Squash and Merge** or **Rebase and Merge** to maintain a linear history. Merge commits are disabled.
+
+## Engineering Standards
+
+- **Tests**: If you've added code, you *must* add tests.
+- **Security**: No secrets or credentials should ever be committed.
+- **Code Style**: Run `go fmt` and ensure `npm run lint` passes.
 
 ## Attribution
 
