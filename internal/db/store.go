@@ -19,6 +19,10 @@ func NewStore(database *sql.DB) *Store {
 	return &Store{db: database}
 }
 
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
 func (s *Store) ClearData() error {
 	tables := []string{
 		"ticket_dependencies",

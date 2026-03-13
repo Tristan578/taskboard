@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, X, Users } from "lucide-react";
 import { api, type Team } from "../api/client";
 

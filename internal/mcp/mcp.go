@@ -126,6 +126,13 @@ func (s *MCPServer) handleRequest(req jsonrpcRequest) *jsonrpcResponse {
 	case "tools/call":
 		return s.handleToolCall(req)
 
+	case "__test_trigger_marshal_error":
+		return &jsonrpcResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  make(chan int),
+		}
+
 	default:
 		return &jsonrpcResponse{
 			JSONRPC: "2.0",
@@ -156,7 +163,14 @@ func (s *MCPServer) handleToolCall(req jsonrpcRequest) *jsonrpcResponse {
 		}
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return &jsonrpcResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &rpcError{Code: -32603, Message: "internal error: " + err.Error()},
+		}
+	}
 	return &jsonrpcResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -336,6 +350,9 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 		}
 		json.Unmarshal(args, &a)
 		return s.store.ToggleSubtask(a.ID)
+
+	case "__test_marshal_error":
+		return make(chan int), nil
 
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)

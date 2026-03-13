@@ -34,7 +34,6 @@ func NewClientWithURLs(ctx context.Context, token string, restURL, gqlURL string
 
 	restClient := github.NewClient(tc)
 	if restURL != "" {
-		// Ensure trailing slash for go-github
 		if !strings.HasSuffix(restURL, "/") {
 			restURL += "/"
 		}
@@ -43,8 +42,10 @@ func NewClientWithURLs(ctx context.Context, token string, restURL, gqlURL string
 	}
 
 	gqlClient := githubv4.NewClient(tc)
-	// githubv4 doesn't support custom URLs easily without a custom HTTP client.
-	// We'll skip GraphQL mocking for now or implement it if needed for 100%.
+	if gqlURL != "" {
+		// Use a local URL for GraphQL if provided
+		gqlClient = githubv4.NewEnterpriseClient(gqlURL, tc)
+	}
 
 	return &Client{
 		rest: restClient,

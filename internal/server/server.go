@@ -185,7 +185,11 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	p, _ := s.store.GetProject(id)
+	p, err := s.store.GetProject(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if p == nil {
 		writeError(w, http.StatusNotFound, "project not found")
 		return
@@ -260,7 +264,11 @@ func (s *Server) updateTeam(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	t, _ := s.store.GetTeam(id)
+	t, err := s.store.GetTeam(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if t == nil {
 		writeError(w, http.StatusNotFound, "team not found")
 		return
@@ -346,7 +354,11 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	existing, err := s.store.GetTicket(id)
-	if err != nil || existing == nil {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing == nil {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
 	}
@@ -402,7 +414,11 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	existing, err := s.store.GetTicket(id)
-	if err != nil || existing == nil {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing == nil {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
 	}
@@ -435,7 +451,11 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	t, _ := s.store.GetTicket(id)
+	t, err := s.store.GetTicket(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if t == nil {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
@@ -481,7 +501,11 @@ func (s *Server) toggleSubtask(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteSubtask(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	st, _ := s.store.GetSubtask(id)
+	st, err := s.store.GetSubtask(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if st == nil {
 		writeError(w, http.StatusNotFound, "subtask not found")
 		return
@@ -543,7 +567,11 @@ func (s *Server) updateLabel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	l, _ := s.store.GetLabel(id)
+	l, err := s.store.GetLabel(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if l == nil {
 		writeError(w, http.StatusNotFound, "label not found")
 		return

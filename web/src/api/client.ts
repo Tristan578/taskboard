@@ -49,6 +49,7 @@ export interface Ticket {
   acceptanceCriteria?: string;
   technicalDetails?: string;
   testingDetails?: string;
+  isDraft: boolean;
   createdAt: string;
   updatedAt: string;
   projectPrefix: string;

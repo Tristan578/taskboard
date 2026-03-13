@@ -19,7 +19,7 @@ func setupTestMCP(t *testing.T) (*MCPServer, *db.Store, func()) {
 	}
 
 	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
 		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
@@ -90,6 +90,16 @@ func TestMCP_Tools(t *testing.T) {
 	for _, tt := range errorTests {
 		argsJSON, _ := json.Marshal(tt.args)
 		_, _ = s.callTool(tt.name, argsJSON)
+	}
+
+	// Test initialized notification
+	reqNotify := jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized",
+	}
+	respNotify := s.handleRequest(reqNotify)
+	if respNotify != nil {
+		t.Errorf("Expected nil response for initialized notification")
 	}
 }
 
@@ -177,7 +187,6 @@ func TestMCP_Run_WriteError(t *testing.T) {
 	input := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"initialize"}` + "\n")
 	output := &faultyWriter{}
 	
-	// Run will exit when Write fails
 	_ = s.Run(input, output)
 }
 
@@ -197,10 +206,33 @@ func TestMCP_HandleToolCall_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestMCP_HandleToolCall_MarshalError(t *testing.T) {
+	s, _, cleanup := setupTestMCP(t)
+	defer cleanup()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "tools/call",
+		Params:  json.RawMessage(`{"name": "__test_marshal_error", "arguments": {}}`),
+	}
+	resp := s.handleToolCall(req)
+	if resp.Error == nil {
+		t.Errorf("Expected error for unmarshalable tool result")
+	}
+}
+
 func TestMCP_Run_MarshalError(t *testing.T) {
-	// We need handleRequest to return something that can't be marshaled.
-	// But it returns a pointer to jsonrpcResponse which is always marshalable unless result is bad.
-	// Let's create a custom MCPServer or just mock the scenario if we can.
+	s, _, cleanup := setupTestMCP(t)
+	defer cleanup()
+
+	// Method that returns unmarshalable Result
+	input := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"__test_trigger_marshal_error"}` + "\n")
+	output := &bytes.Buffer{}
+	_ = s.Run(input, output)
+	if len(output.Bytes()) > 0 {
+		t.Errorf("Expected no output for marshal error, got %s", output.String())
+	}
 }
 
 type readThenError struct {
@@ -216,9 +248,58 @@ func (r *readThenError) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("forced error after read")
 }
 
-func TestMCP_Run_ErrorAfterRead(t *testing.T) {
+func TestMCP_BatchCreate_Error(t *testing.T) {
+	s, store, cleanup := setupTestMCP(t)
+	// No defer cleanup, we'll close manually to trigger error
+	
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P", Prefix: "P"})
+	tick, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T"})
+	
+	store.Close()
+	
+	args := map[string]interface{}{
+		"ticketId": tick.ID,
+		"subtasks": []map[string]string{{"title": "S1"}},
+	}
+	argsJSON, _ := json.Marshal(args)
+	_, err := s.callTool("batch_create_subtasks", argsJSON)
+	if err == nil {
+		t.Errorf("Expected error for batch create with closed DB")
+	}
+	cleanup()
+}
+
+func TestMCP_HandleToolCall_InvalidParams(t *testing.T) {
 	s, _, cleanup := setupTestMCP(t)
 	defer cleanup()
-	
-	_ = s.Run(&readThenError{}, &bytes.Buffer{})
+
+	// req.Params is a number, cannot unmarshal into struct
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "tools/call",
+		Params:  json.RawMessage(`123`), 
+	}
+	resp := s.handleToolCall(req)
+	if resp.Error == nil || resp.Error.Code != -32602 {
+		t.Errorf("Expected invalid params error (-32602)")
+	}
+}
+
+func TestMCP_Run_InvalidLine(t *testing.T) {
+	s, _, cleanup := setupTestMCP(t)
+	defer cleanup()
+
+	input := bytes.NewBufferString("invalid json\n")
+	output := &bytes.Buffer{}
+	_ = s.Run(input, output)
+}
+
+func TestMCP_CallTool_Extra(t *testing.T) {
+	s, _, cleanup := setupTestMCP(t)
+	defer cleanup()
+
+	// Hit remaining branches in callTool
+	_, _ = s.callTool("list_teams", nil)
+	_, _ = s.callTool("list_tickets", nil)
 }

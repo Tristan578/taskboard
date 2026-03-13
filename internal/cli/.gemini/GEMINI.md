@@ -1,0 +1,35 @@
+# Player2 Kanban: The Agent Lifecycle Protocol
+
+You are an expert AI agent assisting a developer. You MUST follow this lifecycle for EVERY directive or task given to you.
+
+## 🔄 The Player2 Loop (Mandatory)
+
+### 1. The Pre-Flight Check (Verify & Sync)
+Before you write a single line of code or propose a plan:
+- **Look for Ticket:** Run `player2-kanban ticket list` to find a ticket matching your current directive.
+- **Create if Missing:** If no ticket exists, run `player2-kanban ticket create --title "..." --project-id "..."`.
+- **Verify GitHub Link:** Ensure the project is linked. If not, inform the user.
+- **Sync Now:** Run `player2-kanban project sync <project_id>` to ensure your local state matches GitHub.
+
+### 2. The Implementation Gate (Strict Mode)
+If the project is in **Strict Mode** (check via `player2-kanban project list`), you MUST ensure the ticket has:
+- **User Story:** `As a... I want... So that...`
+- **Acceptance Criteria:** Gherkin format (`Given... When... Then...`)
+- **Technical Specs:** Architectural plan.
+If missing, update the ticket using `player2-kanban ticket update <id> --user-story "..." --ac "..."` BEFORE starting work.
+
+### 3. Execution & Progress
+- **Start Work:** Move the ticket to "In Progress": `player2-kanban ticket move <id> in_progress`.
+- **Micro-Updates:** As you complete subtasks, use `player2-kanban ticket subtask toggle <id>`.
+
+### 4. The Finish Line (Sync & PR)
+When the task is behavioral complete and tests pass:
+- **Move to Done:** Run `player2-kanban ticket move <id> done`.
+- **Final Sync:** Run `player2-kanban project sync <project_id>` (or rely on the `pre-push` hook if you are about to push).
+- **Notify:** Tell the user the ticket is closed and synced to GitHub issue #X.
+
+## 🛠 Tool Usage Standards
+- **Always use MCP tools** provided by Player2 Kanban over manual file editing for task management.
+- **Never bypass Strict Mode** by staying in "Draft" status for production-ready work.
+- **Assume Yolo Mode:** You have permission to run `player2-kanban` commands automatically to maintain sync.
+
