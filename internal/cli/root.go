@@ -97,15 +97,15 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
-		Short: "Start MCP stdio server for AI assistants",
+		Short: "Start the MCP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			database, err := openDB()
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
 			store := db.NewStore(database)
-			srv := mcp.NewServer(store)
-			return srv.Run()
+			server := mcp.NewServer(store)
+			return server.Run(os.Stdin, os.Stdout)
 		},
 	}
 
@@ -115,11 +115,11 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
 			if !force {
-				fmt.Print("This will delete all projects, tickets, teams, and labels. Continue? [y/N] ")
+				cmd.Print("This will delete all projects, tickets, teams, and labels. Continue? [y/N] ")
 				var answer string
 				fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" {
-					fmt.Println("Aborted.")
+					cmd.Println("Aborted.")
 					return nil
 				}
 			}
@@ -131,7 +131,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err := store.ClearData(); err != nil {
 				return fmt.Errorf("clearing data: %w", err)
 			}
-			fmt.Println("All data cleared.")
+			cmd.Println("All data cleared.")
 			return nil
 		},
 	}

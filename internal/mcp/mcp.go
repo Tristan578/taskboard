@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/Tristan578/taskboard/internal/db"
 	"github.com/Tristan578/taskboard/internal/models"
@@ -62,9 +61,9 @@ type textContent struct {
 	Text string `json:"text"`
 }
 
-func (s *MCPServer) Run() error {
-	reader := bufio.NewReader(os.Stdin)
-	writer := os.Stdout
+func (s *MCPServer) Run(r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := w
 
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -72,7 +71,7 @@ func (s *MCPServer) Run() error {
 			if err == io.EOF {
 				return nil
 			}
-			return fmt.Errorf("reading stdin: %w", err)
+			return fmt.Errorf("reading: %w", err)
 		}
 
 		var req jsonrpcRequest

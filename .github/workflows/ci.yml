@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -53,10 +54,7 @@ jobs:
           go test -coverprofile=coverage.txt -covermode=atomic ./...
           COVERAGE=$(go tool cover -func=coverage.txt | grep total | awk '{print substr($3, 1, length($3)-1)}')
           echo "Current coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 100" | bc -l) )); then
-            echo "Coverage is $COVERAGE%, which is below the required 100%."
-            exit 1
-          fi
+          awk -v cov="$COVERAGE" 'BEGIN { if (cov < 100) { exit 1 } }' || (echo "Coverage is $COVERAGE%, which is below the required 100%." && exit 1)
 
   frontend-checks:
     runs-on: ubuntu-latest
