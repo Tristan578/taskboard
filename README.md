@@ -13,7 +13,8 @@ This project is a fork of the excellent [tcarac/taskboard](https://github.com/tc
 ## Key Enhancements
 
 - **Agent-Native Instructions** — Built-in commands to install `.cursorrules`, `.clauderules`, and `.gemini/GEMINI.md` to align AI assistants with your workflow.
-- **GitHub Sync Engine** — Bidirectional sync between local SQLite and GitHub Issues. Metadata like User Stories and Gherkin ACs are stored in YAML frontmatter within the Issue body.
+- **Hard-Enforced Standards** — CI/CD gates for 75%+ test coverage, `gosec` security scans, and mandatory linear git history.
+- **GitHub Sync Engine** — Bidirectional sync between local SQLite and GitHub Issues. Metadata is stored in hidden HTML comments.
 - **Strict Mode** — Enforce professional standards. When enabled, tickets *must* have a User Story and Acceptance Criteria (Gherkin) before they can be created or updated.
 - **Git Hooks** — Automated sync on `git push` and `git pull` via installed `pre-push` and `post-merge` hooks.
 - **Embedded Terminal** — Run AI coding agents directly from the web UI.
