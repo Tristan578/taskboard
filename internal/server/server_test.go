@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"strings"
 
 	"github.com/Tristan578/taskboard/internal/db"
 	"github.com/Tristan578/taskboard/internal/models"
 	"database/sql"
-	"io/fs"
-	"os"
 	_ "modernc.org/sqlite"
+	"github.com/gorilla/websocket"
 )
 
 func setupTestServer(t *testing.T) (*Server, *db.Store, func()) {
@@ -23,7 +23,7 @@ func setupTestServer(t *testing.T) (*Server, *db.Store, func()) {
 
 	// Comprehensive schema for server tests
 	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
@@ -42,39 +42,41 @@ func TestServer_Projects(t *testing.T) {
 	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	// Create
+	// 1. Create
 	body, _ := json.Marshal(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	req := httptest.NewRequest("POST", "/api/projects", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Create project failed") }
+	if w.Code != http.StatusCreated { t.Errorf("Create project failed: %d", w.Code) }
 
 	var project models.Project
 	json.Unmarshal(w.Body.Bytes(), &project)
 
-	// List
+	// 2. List
 	req = httptest.NewRequest("GET", "/api/projects", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("List projects failed") }
 
-	// Get
+	// 3. Get
 	req = httptest.NewRequest("GET", "/api/projects/"+project.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("Get project failed") }
 
-	// Update
+	// 4. Update
 	newName := "P1 Updated"
 	ub, _ := json.Marshal(models.UpdateProjectRequest{Name: &newName})
 	req = httptest.NewRequest("PUT", "/api/projects/"+project.ID, bytes.NewBuffer(ub))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Update project failed") }
 
-	// Delete
+	// 5. Delete
 	req = httptest.NewRequest("DELETE", "/api/projects/"+project.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent { t.Errorf("Delete project failed") }
 }
 
 func TestServer_Tickets(t *testing.T) {
@@ -83,35 +85,48 @@ func TestServer_Tickets(t *testing.T) {
 
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 
-	// Create
+	// 1. Create
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
 	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("Create ticket failed") }
 	
 	var ticket models.Ticket
 	json.Unmarshal(w.Body.Bytes(), &ticket)
 
-	// List
+	// 2. List
 	req = httptest.NewRequest("GET", "/api/tickets", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("List tickets failed") }
 
-	// Get
+	// 3. Get
 	req = httptest.NewRequest("GET", "/api/tickets/"+ticket.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Get ticket failed") }
 
-	// Move
+	// 4. Update
+	newTitle := "T1 Updated"
+	updateBody, _ := json.Marshal(models.UpdateTicketRequest{Title: &newTitle})
+	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Update ticket failed") }
+
+	// 5. Move
 	mb, _ := json.Marshal(models.MoveTicketRequest{Status: "done"})
 	req = httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(mb))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Move ticket failed") }
 
-	// Delete
+	// 6. Delete
 	req = httptest.NewRequest("DELETE", "/api/tickets/"+ticket.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent { t.Errorf("Delete ticket failed") }
 }
 
 func TestServer_Teams(t *testing.T) {
@@ -122,38 +137,105 @@ func TestServer_Teams(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/teams", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("Create team failed") }
 	
 	var team models.Team
 	json.Unmarshal(w.Body.Bytes(), &team)
 
+	req = httptest.NewRequest("GET", "/api/teams", nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("List teams failed") }
+
 	req = httptest.NewRequest("GET", "/api/teams/"+team.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Get team failed") }
+
+	// Update
+	name := "T2"
+	ub, _ := json.Marshal(models.UpdateTeamRequest{Name: &name})
+	req = httptest.NewRequest("PUT", "/api/teams/"+team.ID, bytes.NewBuffer(ub))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Update team failed") }
 
 	req = httptest.NewRequest("DELETE", "/api/teams/"+team.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent { t.Errorf("Delete team failed") }
 }
 
 func TestServer_Labels(t *testing.T) {
 	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	body, _ := json.Marshal(models.CreateLabelRequest{Name: "L1"})
+	body, _ := json.Marshal(models.CreateLabelRequest{Name: "L1", Color: "red"})
 	req := httptest.NewRequest("POST", "/api/labels", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("Create label failed") }
 	
 	var label models.Label
 	json.Unmarshal(w.Body.Bytes(), &label)
 
-	req = httptest.NewRequest("PUT", "/api/labels/"+label.ID, bytes.NewBuffer(body))
+	req = httptest.NewRequest("GET", "/api/labels", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("List labels failed") }
+
+	name := "L2"
+	ub, _ := json.Marshal(models.UpdateLabelRequest{Name: &name})
+	req = httptest.NewRequest("PUT", "/api/labels/"+label.ID, bytes.NewBuffer(ub))
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Update label failed") }
 
 	req = httptest.NewRequest("DELETE", "/api/labels/"+label.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent { t.Errorf("Delete label failed") }
+}
+
+func TestServer_Subtasks(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+
+	// 1. Add Subtask
+	body, _ := json.Marshal(models.CreateSubtaskRequest{Title: "Sub 1"})
+	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/subtasks", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("Add subtask failed") }
+	
+	var st models.Subtask
+	json.Unmarshal(w.Body.Bytes(), &st)
+
+	// 2. Toggle
+	req = httptest.NewRequest("POST", "/api/subtasks/"+st.ID+"/toggle", nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Toggle subtask failed") }
+
+	// 3. Delete
+	req = httptest.NewRequest("DELETE", "/api/subtasks/"+st.ID, nil)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent { t.Errorf("Delete subtask failed") }
+}
+
+func TestServer_Board(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	req := httptest.NewRequest("GET", "/api/board?projectId="+p.ID, nil)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("Get board failed") }
 }
 
 func TestServer_Strict_Enforcement(t *testing.T) {
@@ -168,9 +250,7 @@ func TestServer_Strict_Enforcement(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected 400 when moving draft out without specs")
-	}
+	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 when moving draft out") }
 
 	// 2. Update to non-draft should fail if missing specs
 	isDraft := false
@@ -178,39 +258,30 @@ func TestServer_Strict_Enforcement(t *testing.T) {
 	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected 400 when converting to non-draft without specs")
-	}
+	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 when converting to non-draft") }
 }
 
-func TestServer_StaticFiles(t *testing.T) {
-	// Create a dummy FS
-	fs := &mockFS{}
+func TestServer_Recoverer(t *testing.T) {
 	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
-	s.setupRoutes(fs)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	s.router.Get("/panic", func(w http.ResponseWriter, r *http.Request) { panic("test panic") })
+	req := httptest.NewRequest("GET", "/panic", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	// Should return index.html or 404 from our mock
+	if w.Code != http.StatusInternalServerError { t.Errorf("Expected 500 for panic") }
 }
 
-type mockFS struct{}
-func (m *mockFS) Open(name string) (fs.File, error) {
-	return nil, os.ErrNotExist
-}
-
-func TestServer_TerminalWS(t *testing.T) {
+func TestServer_CORS(t *testing.T) {
 	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	ts := httptest.NewServer(s)
-	defer ts.Close()
-
-	// Since we can't easily run a real shell/PTY in a limited CI environment
-	// we just test the endpoint exists and handles a connection.
-	// In a real brick building, we'd use a websocket client to connect.
+	req := httptest.NewRequest("OPTIONS", "/api/projects", nil)
+	req.Header.Set("Origin", "http://example.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusOK && w.Code != http.StatusNoContent { t.Errorf("CORS failed: %d", w.Code) }
 }
 
 func TestServer_ErrorPaths(t *testing.T) {
@@ -223,24 +294,24 @@ func TestServer_ErrorPaths(t *testing.T) {
 		body   interface{}
 		code   int
 	}{
-		{"GET", "/api/projects/nonexistent", nil, http.StatusNotFound},
-		{"PUT", "/api/projects/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
-		{"DELETE", "/api/projects/nonexistent", nil, http.StatusNotFound},
-		{"GET", "/api/teams/nonexistent", nil, http.StatusNotFound},
-		{"PUT", "/api/teams/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
-		{"DELETE", "/api/teams/nonexistent", nil, http.StatusNotFound},
-		{"GET", "/api/tickets/nonexistent", nil, http.StatusNotFound},
-		{"PUT", "/api/tickets/nonexistent", map[string]string{"title": "fail"}, http.StatusNotFound},
-		{"POST", "/api/tickets/nonexistent/move", map[string]string{"status": "todo"}, http.StatusNotFound},
-		{"DELETE", "/api/tickets/nonexistent", nil, http.StatusNotFound},
+		{"GET", "/api/projects/none", nil, http.StatusNotFound},
+		{"PUT", "/api/projects/none", map[string]string{"name": "f"}, http.StatusNotFound},
+		{"DELETE", "/api/projects/none", nil, http.StatusNotFound},
+		{"GET", "/api/teams/none", nil, http.StatusNotFound},
+		{"PUT", "/api/teams/none", map[string]string{"name": "f"}, http.StatusNotFound},
+		{"DELETE", "/api/teams/none", nil, http.StatusNotFound},
+		{"GET", "/api/tickets/none", nil, http.StatusNotFound},
+		{"PUT", "/api/tickets/none", map[string]string{"title": "f"}, http.StatusNotFound},
+		{"POST", "/api/tickets/none/move", map[string]string{"status": "todo"}, http.StatusNotFound},
+		{"DELETE", "/api/tickets/none", nil, http.StatusNotFound},
 		{"POST", "/api/projects", map[string]string{"invalid": "json"}, http.StatusBadRequest},
-		{"DELETE", "/api/subtasks/nonexistent", nil, http.StatusNotFound},
-		{"POST", "/api/subtasks/nonexistent/toggle", nil, http.StatusNotFound},
-		{"PUT", "/api/labels/nonexistent", map[string]string{"name": "fail"}, http.StatusNotFound},
-		{"DELETE", "/api/labels/nonexistent", nil, http.StatusNotFound},
-		{"POST", "/api/tickets", map[string]string{"title": "no project"}, http.StatusBadRequest},
-		{"POST", "/api/tickets/t1/subtasks", map[string]string{"notitle": "fail"}, http.StatusBadRequest},
-		{"POST", "/api/teams", map[string]string{"notname": "fail"}, http.StatusBadRequest},
+		{"DELETE", "/api/subtasks/none", nil, http.StatusNotFound},
+		{"POST", "/api/subtasks/none/toggle", nil, http.StatusNotFound},
+		{"PUT", "/api/labels/none", map[string]string{"name": "f"}, http.StatusNotFound},
+		{"DELETE", "/api/labels/none", nil, http.StatusNotFound},
+		{"POST", "/api/tickets", map[string]string{"title": "no proj"}, http.StatusBadRequest},
+		{"POST", "/api/tickets/t1/subtasks", map[string]string{"notitle": "f"}, http.StatusBadRequest},
+		{"POST", "/api/teams", map[string]string{"notname": "f"}, http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
@@ -251,20 +322,90 @@ func TestServer_ErrorPaths(t *testing.T) {
 		} else {
 			bodyBuf = bytes.NewBuffer(nil)
 		}
-		
 		req := httptest.NewRequest(tt.method, tt.url, bodyBuf)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, req)
-		if w.Code != tt.code {
-			t.Errorf("%s %s expected %d, got %d", tt.method, tt.url, tt.code, w.Code)
-		}
+		if w.Code != tt.code { t.Errorf("%s %s expected %d, got %d", tt.method, tt.url, tt.code, w.Code) }
 	}
 
-	// Test Malformed JSON
 	badJSON := httptest.NewRequest("POST", "/api/projects", bytes.NewBufferString("{invalid"))
-	w := httptest.NewRecorder()
-	s.ServeHTTP(w, badJSON)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected 400 for malformed JSON, got %d", w.Code)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, badJSON)
+	if rec.Code != http.StatusBadRequest { t.Errorf("Expected 400 for malformed JSON") }
+}
+
+func TestServer_InternalErrors(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P", Prefix: "P"})
+	tick, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T"})
+	team, _ := store.CreateTeam(models.CreateTeamRequest{Name: "T"})
+	label, _ := store.CreateLabel(models.CreateLabelRequest{Name: "L", Color: "C"})
+	st, _ := store.AddSubtask(tick.ID, models.CreateSubtaskRequest{Title: "S"})
+
+	store.Close() 
+
+	tests := []struct {
+		method string
+		url    string
+		body   interface{}
+	}{
+		{"GET", "/api/projects", nil},
+		{"GET", "/api/projects/"+p.ID, nil},
+		{"POST", "/api/projects", map[string]string{"name": "P", "prefix": "P"}},
+		{"PUT", "/api/projects/"+p.ID, map[string]string{"name": "P"}},
+		{"GET", "/api/teams", nil},
+		{"GET", "/api/teams/"+team.ID, nil},
+		{"POST", "/api/teams", map[string]string{"name": "T"}},
+		{"PUT", "/api/teams/"+team.ID, map[string]string{"name": "T"}},
+		{"GET", "/api/tickets", nil},
+		{"GET", "/api/tickets/"+tick.ID, nil},
+		{"POST", "/api/tickets", map[string]string{"projectId": p.ID, "title": "T"}},
+		{"PUT", "/api/tickets/"+tick.ID, map[string]string{"title": "T"}},
+		{"POST", "/api/tickets/"+tick.ID+"/move", map[string]string{"status": "done"}},
+		{"POST", "/api/tickets/"+tick.ID+"/subtasks", map[string]string{"title": "S"}},
+		{"POST", "/api/subtasks/"+st.ID+"/toggle", nil},
+		{"GET", "/api/labels", nil},
+		{"POST", "/api/labels", map[string]string{"name": "L", "color": "C"}},
+		{"PUT", "/api/labels/"+label.ID, map[string]string{"name": "L"}},
+		{"GET", "/api/board", nil},
 	}
+
+	for _, tt := range tests {
+		var bodyBuf *bytes.Buffer
+		if tt.body != nil {
+			b, _ := json.Marshal(tt.body)
+			bodyBuf = bytes.NewBuffer(b)
+		} else {
+			bodyBuf = bytes.NewBuffer(nil)
+		}
+		req := httptest.NewRequest(tt.method, tt.url, bodyBuf)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		if w.Code != http.StatusInternalServerError { t.Errorf("%s %s expected 500, got %d", tt.method, tt.url, w.Code) }
+	}
+	cleanup()
+}
+
+func TestServer_TerminalWS_Full(t *testing.T) {
+	s, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/terminal/ws"
+	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil { return }
+	
+	// 1. Resize
+	ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"resize","cols":80,"rows":24}`))
+	
+	// 2. Input
+	ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"input","data":"ls\n"}`))
+	
+	// 3. Unknown type
+	ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"unknown"}`))
+	
+	// 4. Invalid JSON
+	ws.WriteMessage(websocket.TextMessage, []byte(`{invalid}`))
+	
+	ws.Close()
 }

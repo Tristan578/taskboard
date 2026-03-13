@@ -97,8 +97,8 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 	ListDeletedTickets(projectID string) ([]models.Ticket, error)
 	PurgeDeletedTickets(projectID string) error
 }, projectID string) error {
-	if client == nil {
-		return fmt.Errorf("github client is nil")
+	if client == nil || client.rest == nil || client.gql == nil {
+		return fmt.Errorf("github client is not properly initialized")
 	}
 	p, err := store.GetProject(projectID)
 	if err != nil || p == nil {
