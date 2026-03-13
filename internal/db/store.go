@@ -41,7 +41,7 @@ func (s *Store) ClearData() error {
 
 	for _, table := range tables {
 		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("clearing %s: %w", table, err)
 		}
 	}
@@ -366,13 +366,13 @@ func (s *Store) CreateTicket(req models.CreateTicketRequest) (*models.Ticket, er
 
 	if len(req.Labels) > 0 {
 		for _, labelID := range req.Labels {
-			s.db.Exec("INSERT OR IGNORE INTO ticket_labels (ticket_id, label_id) VALUES (?, ?)", t.ID, labelID)
+			_, _ = s.db.Exec("INSERT OR IGNORE INTO ticket_labels (ticket_id, label_id) VALUES (?, ?)", t.ID, labelID)
 		}
 	}
 
 	if len(req.BlockedBy) > 0 {
 		for _, blockerID := range req.BlockedBy {
-			s.db.Exec("INSERT OR IGNORE INTO ticket_dependencies (ticket_id, blocked_by_id) VALUES (?, ?)", t.ID, blockerID)
+			_, _ = s.db.Exec("INSERT OR IGNORE INTO ticket_dependencies (ticket_id, blocked_by_id) VALUES (?, ?)", t.ID, blockerID)
 		}
 	}
 
@@ -444,16 +444,16 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 	}
 
 	if req.Labels != nil {
-		s.db.Exec("DELETE FROM ticket_labels WHERE ticket_id = ?", id)
+		_, _ = s.db.Exec("DELETE FROM ticket_labels WHERE ticket_id = ?", id)
 		for _, labelID := range req.Labels {
-			s.db.Exec("INSERT OR IGNORE INTO ticket_labels (ticket_id, label_id) VALUES (?, ?)", id, labelID)
+			_, _ = s.db.Exec("INSERT OR IGNORE INTO ticket_labels (ticket_id, label_id) VALUES (?, ?)", id, labelID)
 		}
 	}
 
 	if req.BlockedBy != nil {
-		s.db.Exec("DELETE FROM ticket_dependencies WHERE ticket_id = ?", id)
+		_, _ = s.db.Exec("DELETE FROM ticket_dependencies WHERE ticket_id = ?", id)
 		for _, blockerID := range req.BlockedBy {
-			s.db.Exec("INSERT OR IGNORE INTO ticket_dependencies (ticket_id, blocked_by_id) VALUES (?, ?)", id, blockerID)
+			_, _ = s.db.Exec("INSERT OR IGNORE INTO ticket_dependencies (ticket_id, blocked_by_id) VALUES (?, ?)", id, blockerID)
 		}
 	}
 
@@ -472,7 +472,9 @@ func (s *Store) MoveTicket(id string, req models.MoveTicketRequest) (*models.Tic
 		lexoRank = fmt.Sprintf("%010d", int(position))
 	} else {
 		var maxPos float64
-		s.db.QueryRow("SELECT COALESCE(MAX(position), 0) + 1000 FROM tickets WHERE status = ?", req.Status).Scan(&maxPos)
+		if err := s.db.QueryRow("SELECT COALESCE(MAX(position), 0) + 1000 FROM tickets WHERE status = ?", req.Status).Scan(&maxPos); err != nil {
+			return nil, err
+		}
 		position = maxPos
 		lexoRank = fmt.Sprintf("%010d", int(position))
 	}
@@ -615,7 +617,9 @@ func (s *Store) GetSubtask(id string) (*models.Subtask, error) {
 
 func (s *Store) AddSubtask(ticketID string, req models.CreateSubtaskRequest) (*models.Subtask, error) {
 	var maxPos int
-	s.db.QueryRow("SELECT COALESCE(MAX(position), -1) + 1 FROM subtasks WHERE ticket_id = ?", ticketID).Scan(&maxPos)
+	if err := s.db.QueryRow("SELECT COALESCE(MAX(position), -1) + 1 FROM subtasks WHERE ticket_id = ?", ticketID).Scan(&maxPos); err != nil {
+		return nil, err
+	}
 
 	st := models.Subtask{
 		ID:       newID(),
@@ -629,12 +633,11 @@ func (s *Store) AddSubtask(ticketID string, req models.CreateSubtaskRequest) (*m
 }
 
 func (s *Store) ToggleSubtask(id string) (*models.Subtask, error) {
-	_, err := s.db.Exec("UPDATE subtasks SET completed = NOT completed WHERE id = ?", id)
-	if err != nil {
+	if _, err := s.db.Exec("UPDATE subtasks SET completed = NOT completed WHERE id = ?", id); err != nil {
 		return nil, err
 	}
 	var st models.Subtask
-	err = s.db.QueryRow("SELECT id, ticket_id, title, completed, position FROM subtasks WHERE id = ?", id).
+	err := s.db.QueryRow("SELECT id, ticket_id, title, completed, position FROM subtasks WHERE id = ?", id).
 		Scan(&st.ID, &st.TicketID, &st.Title, &st.Completed, &st.Position)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -729,7 +732,7 @@ func (s *Store) GetPendingSyncJobs() ([]models.SyncJob, error) {
 		}
 		jobs = append(jobs, j)
 	}
-	return jobs, nil
+	return jobs, rows.Err()
 }
 
 func (s *Store) UpdateSyncJobStatus(id, status string, attempts int, lastError string) error {

@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 	"embed"
@@ -12,7 +12,7 @@ import (
 var testSkillsFS embed.FS
 
 func TestCLI_Comprehensive(t *testing.T) {
-	tempDir, _ := ioutil.TempDir("", "cli-total")
+	tempDir, _ := os.MkdirTemp("", "cli-total")
 	defer os.RemoveAll(tempDir)
 
 	oldApp := os.Getenv("APPDATA")
@@ -31,8 +31,9 @@ func TestCLI_Comprehensive(t *testing.T) {
 	run := func(args ...string) error {
 		root := NewRootCmd(testSkillsFS)
 		root.SetArgs(args)
-		root.SetOut(ioutil.Discard)
-		root.SetErr(ioutil.Discard)
+		// Redirect output to avoid clutter
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
 		return root.Execute()
 	}
 
@@ -84,10 +85,10 @@ func TestCLI_Comprehensive(t *testing.T) {
 		
 		pidPath, _ := pidFilePath()
 		os.MkdirAll(filepath.Dir(pidPath), 0755)
-		ioutil.WriteFile(pidPath, []byte("999999"), 0644)
+		os.WriteFile(pidPath, []byte("999999"), 0644)
 		_ = run("stop") 
 		
-		ioutil.WriteFile(pidPath, []byte("abc"), 0644)
+		os.WriteFile(pidPath, []byte("abc"), 0644)
 		_ = run("stop")
 
 		_ = run("start", "--port", "3999") 
@@ -104,6 +105,10 @@ func TestCLI_Comprehensive(t *testing.T) {
 		_ = run("ticket", "create") // missing project/title
 		_ = run("ticket", "move") // missing arg
 		_ = run("ticket", "subtask", "add") // missing args
+		
+		// Hook error
+		os.Chdir(os.TempDir()) // move out of git repo
+		_ = run("hook", "install", "P1")
 		
 		// Agent error
 		_ = run("agent-config", "install", "unknown")

@@ -31,7 +31,7 @@ func setupTestMCP(t *testing.T) (*MCPServer, *db.Store, func()) {
 
 	store := db.NewStore(database)
 	s := NewServer(store)
-	return s, store, func() { database.Close() }
+	return s, store, func() { _ = database.Close() }
 }
 
 func TestMCP_Tools(t *testing.T) {
@@ -235,19 +235,6 @@ func TestMCP_Run_MarshalError(t *testing.T) {
 	}
 }
 
-type readThenError struct {
-	read bool
-}
-func (r *readThenError) Read(p []byte) (n int, err error) {
-	if !r.read {
-		r.read = true
-		data := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n")
-		copy(p, data)
-		return len(data), nil
-	}
-	return 0, fmt.Errorf("forced error after read")
-}
-
 func TestMCP_BatchCreate_Error(t *testing.T) {
 	s, store, cleanup := setupTestMCP(t)
 	// No defer cleanup, we'll close manually to trigger error
@@ -255,7 +242,7 @@ func TestMCP_BatchCreate_Error(t *testing.T) {
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P", Prefix: "P"})
 	tick, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T"})
 	
-	store.Close()
+	_ = store.Close()
 	
 	args := map[string]interface{}{
 		"ticketId": tick.ID,

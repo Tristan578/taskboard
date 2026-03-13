@@ -74,7 +74,9 @@ func (w *Worker) processJob(ctx context.Context, job models.SyncJob) {
 		log.Printf("Job %s failed: %v", job.ID, err)
 	}
 
-	w.store.UpdateSyncJobStatus(job.ID, status, attempts, lastError)
+	if err := w.store.UpdateSyncJobStatus(job.ID, status, attempts, lastError); err != nil {
+		log.Printf("Worker failed to update status for job %s: %v", job.ID, err)
+	}
 }
 
 func (w *Worker) executeAction(ctx context.Context, job models.SyncJob) error {
