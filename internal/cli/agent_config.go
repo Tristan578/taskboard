@@ -32,29 +32,29 @@ func agentConfigCommands() *cobra.Command {
 			switch agent {
 			case "cursor":
 				targetPath = ".cursor/rules/player2.mdc"
-				_ = os.MkdirAll(".cursor/rules", 0755)
+				_ = os.MkdirAll(".cursor/rules", 0700)
 				// Add Cursor-specific frontmatter
 				baseContent = append([]byte("---\ndescription: Mandatory workflow for Player2 Kanban\nglobs: **/*\nalwaysApply: true\n---\n\n"), baseContent...)
 			case "claude":
 				targetPath = "CLAUDE.md" // Official Claude Code standard
 			case "gemini":
 				targetPath = ".gemini/GEMINI.md"
-				_ = os.MkdirAll(".gemini", 0755)
+				_ = os.MkdirAll(".gemini", 0700)
 			case "windsurf":
 				targetPath = ".windsurfrules"
 			case "antigravity":
 				targetPath = ".agent/rules/player2.md"
-				_ = os.MkdirAll(".agent/rules", 0755)
+				_ = os.MkdirAll(".agent/rules", 0700)
 			case "copilot":
 				targetPath = ".github/copilot-instructions.md"
-				_ = os.MkdirAll(".github", 0755)
+				_ = os.MkdirAll(".github", 0700)
 			case "codex":
 				targetPath = "AGENTS.md" // OpenAI Codex standard
 			default:
 				return fmt.Errorf("unknown agent: %s. Supported: cursor, claude, gemini, windsurf, antigravity, copilot, codex", agent)
 			}
 
-			if err := os.WriteFile(targetPath, baseContent, 0644); err != nil {
+			if err := os.WriteFile(targetPath, baseContent, 0600); err != nil {
 				return fmt.Errorf("writing agent config: %w", err)
 			}
 

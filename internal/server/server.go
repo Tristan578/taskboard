@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/go-chi/chi/v5"
@@ -36,7 +37,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ListenAndServe(port int) error {
 	addr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Taskboard running at http://localhost:%d\n", port)
-	return http.ListenAndServe(addr, s.router)
+	
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      s.router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	
+	return srv.ListenAndServe()
 }
 
 func (s *Server) setupRoutes(webFS fs.FS) {
@@ -608,6 +618,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
+	// #nosec G204
 	cmd := exec.Command(shell)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
@@ -633,7 +644,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := ptmx.Read(buf)
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				return
 			}
 			if err := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {

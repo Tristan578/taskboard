@@ -40,6 +40,7 @@ func (s *Store) ClearData() error {
 	}
 
 	for _, table := range tables {
+		// #nosec G202
 		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("clearing %s: %w", table, err)

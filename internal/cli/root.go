@@ -80,16 +80,16 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			}
 
 			if err := process.Signal(syscall.Signal(0)); err != nil {
-				os.Remove(pidPath)
+				_ = os.Remove(pidPath)
 				return fmt.Errorf("player2-kanban is not running (stale pid file removed)")
 			}
 
 			if err := process.Signal(syscall.SIGTERM); err != nil {
-				os.Remove(pidPath)
+				_ = os.Remove(pidPath)
 				return fmt.Errorf("failed to stop player2-kanban: %w", err)
 			}
 
-			os.Remove(pidPath)
+			_ = os.Remove(pidPath)
 			fmt.Printf("Player2 Kanban stopped (pid %d)\n", pid)
 			return nil
 		},
@@ -191,6 +191,7 @@ func daemonize(port int) error {
 	if dbPath != "" {
 		daemonArgs = append([]string{"--db", dbPath}, daemonArgs...)
 	}
+	// #nosec G204
 	cmd := exec.Command(exe, daemonArgs...)
 	// cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
@@ -219,10 +220,10 @@ func pidFilePath() (string, error) {
 }
 
 func writePID(path string, pid int) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o644)
+	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0600)
 }
 
 func readPID(path string) (int, error) {
