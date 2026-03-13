@@ -20,8 +20,8 @@ func TestCLI_Comprehensive(t *testing.T) {
 	defer os.Setenv("APPDATA", oldApp)
 
 	oldWd, _ := os.Getwd()
-	os.Chdir(tempDir)
-	defer os.Chdir(oldWd)
+	_ = os.Chdir(tempDir)
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	// Ensure globals are reset
 	dbPath = ""
@@ -74,7 +74,7 @@ func TestCLI_Comprehensive(t *testing.T) {
 	})
 
 	t.Run("Hook", func(t *testing.T) {
-		os.Mkdir(".git", 0755)
+		_ = os.Mkdir(".git", 0755)
 		_ = run("hook", "install", "P1")
 	})
 
@@ -84,11 +84,11 @@ func TestCLI_Comprehensive(t *testing.T) {
 		_ = run("mcp")
 		
 		pidPath, _ := pidFilePath()
-		os.MkdirAll(filepath.Dir(pidPath), 0755)
-		os.WriteFile(pidPath, []byte("999999"), 0644)
+		_ = os.MkdirAll(filepath.Dir(pidPath), 0755)
+		_ = os.WriteFile(pidPath, []byte("999999"), 0644)
 		_ = run("stop") 
 		
-		os.WriteFile(pidPath, []byte("abc"), 0644)
+		_ = os.WriteFile(pidPath, []byte("abc"), 0644)
 		_ = run("stop")
 
 		_ = run("start", "--port", "3999") 
@@ -107,7 +107,7 @@ func TestCLI_Comprehensive(t *testing.T) {
 		_ = run("ticket", "subtask", "add") // missing args
 		
 		// Hook error
-		os.Chdir(os.TempDir()) // move out of git repo
+		_ = os.Chdir(os.TempDir()) // move out of git repo
 		_ = run("hook", "install", "P1")
 		
 		// Agent error
