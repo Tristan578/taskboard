@@ -37,6 +37,7 @@ func hookCommands() *cobra.Command {
 				hookPath := filepath.Join(hooksDir, hook)
 				content := fmt.Sprintf("#!/bin/sh\n# player2-kanban auto-sync hook\nplayer2-kanban project sync %s --async\n", projectID)
 				
+				// #nosec G306
 				if err := os.WriteFile(hookPath, []byte(content), 0700); err != nil {
 					return fmt.Errorf("writing %s hook: %w", hook, err)
 				}

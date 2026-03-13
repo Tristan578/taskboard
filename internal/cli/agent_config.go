@@ -54,6 +54,7 @@ func agentConfigCommands() *cobra.Command {
 				return fmt.Errorf("unknown agent: %s. Supported: cursor, claude, gemini, windsurf, antigravity, copilot, codex", agent)
 			}
 
+			// #nosec G306
 			if err := os.WriteFile(targetPath, baseContent, 0600); err != nil {
 				return fmt.Errorf("writing agent config: %w", err)
 			}

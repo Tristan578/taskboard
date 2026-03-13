@@ -75,7 +75,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 			process, err := os.FindProcess(pid)
 			if err != nil {
-				os.Remove(pidPath)
+				_ = os.Remove(pidPath)
 				return fmt.Errorf("player2-kanban is not running")
 			}
 
@@ -227,6 +227,7 @@ func writePID(path string, pid int) error {
 }
 
 func readPID(path string) (int, error) {
+	// #nosec G304
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err

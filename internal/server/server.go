@@ -618,7 +618,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	// #nosec G204
+	// #nosec G204 G702
 	cmd := exec.Command(shell)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
