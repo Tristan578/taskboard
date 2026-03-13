@@ -256,7 +256,7 @@ func TestServer_Strict_Enforcement(t *testing.T) {
 	isDraft := false
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
 	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
-	w := httptest.NewRecorder()
+	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 when converting to non-draft") }
 }
