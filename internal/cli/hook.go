@@ -63,6 +63,7 @@ func hookCommands() *cobra.Command {
 			removed := 0
 			for _, hook := range hooks {
 				hookPath := filepath.Join(gitDir, "hooks", hook)
+				// #nosec G304 -- path is constructed from hardcoded .git/hooks/ + hardcoded hook names
 				data, err := os.ReadFile(hookPath)
 				if err != nil {
 					continue
