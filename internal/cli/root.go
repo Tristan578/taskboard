@@ -169,6 +169,13 @@ func openStore() (*db.Store, error) {
 }
 
 func daemonize(port int) error {
+	// Guard: never spawn real daemon processes during tests.
+	// Without this, each daemonize() call spawns a cli.test.exe child
+	// that runs a server forever and is never reaped.
+	if os.Getenv("GO_TEST") == "1" {
+		return fmt.Errorf("daemonize disabled in test mode")
+	}
+
 	pidPath, err := pidFilePath()
 	if err != nil {
 		return err
