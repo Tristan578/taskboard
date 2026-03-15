@@ -148,8 +148,8 @@ func TestIntegrationSmokeTest(t *testing.T) {
 		t.Fatalf("starting binary: %v", err)
 	}
 	// Always kill and wait to prevent process leaks
-	defer cmd.Process.Kill()
-	defer cmd.Wait()
+	defer func() { _ = cmd.Process.Kill() }()
+	defer func() { _ = cmd.Wait() }()
 
 	// Wait for the server to be ready with retries
 	addr := fmt.Sprintf("http://127.0.0.1:%d/api/projects", port)
@@ -212,7 +212,7 @@ func TestGracefulShutdown(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("starting binary: %v", err)
 	}
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	// Wait for server to be ready
 	client := &http.Client{Timeout: 2 * time.Second}
