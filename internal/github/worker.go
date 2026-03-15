@@ -32,7 +32,7 @@ func CalculateNextRetry(attempts int) time.Time {
 	if base > 3600 {
 		base = 3600
 	}
-	jitter := base * 0.25 * (2*rand.Float64() - 1) // +/-25%
+	jitter := base * 0.25 * (2*rand.Float64() - 1) // +/-25% // #nosec G404 -- jitter for backoff, not security
 	delay := time.Duration(base+jitter) * time.Second
 	return time.Now().Add(delay)
 }
