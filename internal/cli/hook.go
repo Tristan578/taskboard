@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -49,6 +50,44 @@ func hookCommands() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(installCmd)
+	uninstallCmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove player2-kanban Git hooks",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gitDir := ".git"
+			if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+				return fmt.Errorf("current directory is not a git repository")
+			}
+
+			hooks := []string{"pre-push", "post-merge"}
+			removed := 0
+			for _, hook := range hooks {
+				hookPath := filepath.Join(gitDir, "hooks", hook)
+				// #nosec G304 -- path is constructed from hardcoded .git/hooks/ + hardcoded hook names
+				data, err := os.ReadFile(hookPath)
+				if err != nil {
+					continue
+				}
+				// Only remove hooks we installed
+				if !strings.Contains(string(data), "player2-kanban") {
+					continue
+				}
+				if err := os.Remove(hookPath); err != nil {
+					return fmt.Errorf("removing %s hook: %w", hook, err)
+				}
+				fmt.Printf("Removed %s hook.\n", hook)
+				removed++
+			}
+			if removed == 0 {
+				fmt.Println("No player2-kanban hooks found.")
+			} else {
+				fmt.Println("Hooks removed successfully.")
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(installCmd, uninstallCmd)
 	return cmd
 }
+

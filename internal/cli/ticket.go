@@ -45,6 +45,8 @@ func ticketCommands() *cobra.Command {
 	listCmd.Flags().StringVar(&priority, "priority", "", "filter by priority (urgent|high|medium|low)")
 
 	var createProject, createPriority, createDue, createTeam string
+	var createDescription, createUserStory, createAC, createTechnical, createTesting string
+	var createDraft bool
 	createCmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new ticket",
@@ -55,9 +57,15 @@ func ticketCommands() *cobra.Command {
 			}
 			title, _ := cmd.Flags().GetString("title")
 			req := models.CreateTicketRequest{
-				ProjectID: createProject,
-				Title:     title,
-				Priority:  createPriority,
+				ProjectID:          createProject,
+				Title:              title,
+				Description:        createDescription,
+				Priority:           createPriority,
+				UserStory:          createUserStory,
+				AcceptanceCriteria: createAC,
+				TechnicalDetails:   createTechnical,
+				TestingDetails:     createTesting,
+				IsDraft:            createDraft,
 			}
 			if createDue != "" {
 				req.DueDate = &createDue
@@ -77,9 +85,15 @@ func ticketCommands() *cobra.Command {
 	_ = createCmd.MarkFlagRequired("project")
 	createCmd.Flags().String("title", "", "ticket title (required)")
 	_ = createCmd.MarkFlagRequired("title")
+	createCmd.Flags().StringVar(&createDescription, "description", "", "ticket description")
 	createCmd.Flags().StringVar(&createPriority, "priority", "medium", "priority (urgent|high|medium|low)")
 	createCmd.Flags().StringVar(&createDue, "due", "", "due date (YYYY-MM-DD)")
 	createCmd.Flags().StringVar(&createTeam, "team", "", "team ID")
+	createCmd.Flags().StringVar(&createUserStory, "user-story", "", "user story (As a... I want... So that...)")
+	createCmd.Flags().StringVar(&createAC, "acceptance-criteria", "", "acceptance criteria (Given/When/Then)")
+	createCmd.Flags().StringVar(&createTechnical, "technical-details", "", "technical implementation details")
+	createCmd.Flags().StringVar(&createTesting, "testing-details", "", "testing plan details")
+	createCmd.Flags().BoolVar(&createDraft, "draft", false, "create as draft (bypasses strict mode validation)")
 
 	var moveStatus string
 	moveCmd := &cobra.Command{
