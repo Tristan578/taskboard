@@ -230,6 +230,7 @@ type SyncJob struct {
 	Status      string     `json:"status"`
 	Attempts    int        `json:"attempts"`
 	LastError   string     `json:"lastError,omitempty"`
+	NextRetryAt *time.Time `json:"nextRetryAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
