@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"math"
 	"math/rand"
 	"time"
@@ -68,7 +68,7 @@ func (w *Worker) Start(ctx context.Context) {
 func (w *Worker) processJobs(ctx context.Context) {
 	jobs, err := w.store.GetPendingSyncJobs()
 	if err != nil {
-		log.Printf("Worker error fetching jobs: %v", err)
+		slog.Error("failed to fetch sync jobs", "error", err)
 		return
 	}
 
@@ -85,13 +85,13 @@ func (w *Worker) processJob(ctx context.Context, job models.SyncJob) {
 	attempts := job.Attempts + 1
 
 	if err != nil {
-		log.Printf("Job %s failed: %v", job.ID, err)
+		slog.Error("sync job failed", "jobId", job.ID, "action", job.Action, "projectId", job.ProjectID, "attempts", attempts, "error", err)
 
 		// Check for rate limit errors — use the reset time directly
 		var rlErr *RateLimitError
 		if errors.As(err, &rlErr) {
 			if updateErr := w.store.UpdateSyncJobRetry(job.ID, attempts, err.Error(), rlErr.ResetAt); updateErr != nil {
-				log.Printf("Worker failed to update status for job %s: %v", job.ID, updateErr)
+				slog.Error("failed to update job retry status", "jobId", job.ID, "error", updateErr)
 			}
 			return
 		}
@@ -99,13 +99,14 @@ func (w *Worker) processJob(ctx context.Context, job models.SyncJob) {
 		// Standard exponential backoff
 		nextRetry := CalculateNextRetry(attempts)
 		if updateErr := w.store.UpdateSyncJobRetry(job.ID, attempts, err.Error(), nextRetry); updateErr != nil {
-			log.Printf("Worker failed to update status for job %s: %v", job.ID, updateErr)
+			slog.Error("failed to update job retry status", "jobId", job.ID, "error", updateErr)
 		}
 		return
 	}
 
+	slog.Info("sync job completed", "jobId", job.ID, "action", job.Action, "projectId", job.ProjectID, "attempts", attempts)
 	if err := w.store.UpdateSyncJobStatus(job.ID, "completed", attempts, ""); err != nil {
-		log.Printf("Worker failed to update status for job %s: %v", job.ID, err)
+		slog.Error("failed to update job completion status", "jobId", job.ID, "error", err)
 	}
 }
 
