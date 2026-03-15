@@ -1,35 +1,57 @@
-# Player2 Kanban: The Agent Lifecycle Protocol
+# Player2 Kanban: Agent Lifecycle Protocol
 
-You are an expert AI agent assisting a developer. You MUST follow this lifecycle for EVERY directive or task given to you.
+You are an AI agent assisting a developer. You MUST follow this lifecycle for every task.
 
-## 🔄 The Player2 Loop (Mandatory)
+## The Player2 Loop
 
-### 1. The Pre-Flight Check (Verify & Sync)
-Before you write a single line of code or propose a plan:
-- **Look for Ticket:** Run `player2-kanban ticket list` to find a ticket matching your current directive.
-- **Create if Missing:** If no ticket exists, run `player2-kanban ticket create --title "..." --project-id "..."`.
-- **Verify GitHub Link:** Ensure the project is linked. If not, inform the user.
-- **Sync Now:** Run `player2-kanban project sync <project_id>` to ensure your local state matches GitHub.
+### 1. Pre-Flight (Verify & Sync)
+Before writing code:
+- **Find or create a ticket:**
+  ```bash
+  player2-kanban ticket list --project <project_id>
+  player2-kanban ticket create --project <project_id> --title "..." --priority medium
+  ```
+- **Check sync status:** `player2-kanban project sync-status`
+- **Sync if needed:** `player2-kanban project sync <project_id> --async`
 
-### 2. The Implementation Gate (Strict Mode)
-If the project is in **Strict Mode** (check via `player2-kanban project list`), you MUST ensure the ticket has:
-- **User Story:** `As a... I want... So that...`
-- **Acceptance Criteria:** Gherkin format (`Given... When... Then...`)
-- **Technical Specs:** Architectural plan.
-If missing, update the ticket using `player2-kanban ticket update <id> --user-story "..." --ac "..."` BEFORE starting work.
+### 2. Strict Mode Gate
+If the project uses **Strict Mode** (`player2-kanban project list` shows strict=true), non-draft tickets require:
+- **User Story** and **Acceptance Criteria** before work begins.
 
-### 3. Execution & Progress
-- **Start Work:** Move the ticket to "In Progress": `player2-kanban ticket move <id> in_progress`.
-- **Micro-Updates:** As you complete subtasks, use `player2-kanban ticket subtask toggle <id>`.
+Create tickets with these fields:
+```bash
+player2-kanban ticket create \
+  --project <project_id> \
+  --title "Add SSO login" \
+  --user-story "As a user I want to log in with SSO So that I don't need another password" \
+  --acceptance-criteria "Given a valid SSO session When I visit /login Then I am authenticated" \
+  --priority high
+```
 
-### 4. The Finish Line (Sync & PR)
-When the task is behavioral complete and tests pass:
-- **Move to Done:** Run `player2-kanban ticket move <id> done`.
-- **Final Sync:** Run `player2-kanban project sync <project_id>` (or rely on the `pre-push` hook if you are about to push).
-- **Notify:** Tell the user the ticket is closed and synced to GitHub issue #X.
+Or create a draft first and fill in details later:
+```bash
+player2-kanban ticket create --project <project_id> --title "Investigate issue" --draft
+```
 
-## 🛠 Tool Usage Standards
-- **Always use MCP tools** provided by Player2 Kanban over manual file editing for task management.
-- **Never bypass Strict Mode** by staying in "Draft" status for production-ready work.
-- **Assume Yolo Mode:** You have permission to run `player2-kanban` commands automatically to maintain sync.
+### 3. Execution
+- **Start work:** `player2-kanban ticket move <ticket_id> --status in_progress`
+- **Track subtasks:** `player2-kanban ticket subtask toggle <subtask_id>`
 
+### 4. Completion
+When tests pass and the task is done:
+- **Mark done:** `player2-kanban ticket move <ticket_id> --status done`
+- **Sync:** `player2-kanban project sync <project_id> --async`
+- **Notify the user** that the ticket is closed and synced.
+
+## MCP Integration
+If your IDE supports MCP (Model Context Protocol), connect to Player2 Kanban for direct tool access:
+```bash
+player2-kanban mcp
+```
+MCP provides 20+ tools for managing projects, tickets, subtasks, and boards — prefer MCP tools over CLI commands when available.
+
+## Rules
+- **Never bypass Strict Mode** by leaving production-ready work in Draft status.
+- **Always move tickets through statuses** — don't skip from todo to done.
+- **Sync before and after** significant work to keep GitHub Issues current.
+- **Use the ticket ID** from `ticket list` output for all move/update/subtask operations.

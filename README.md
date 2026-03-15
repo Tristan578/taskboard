@@ -91,8 +91,20 @@ player2-kanban hook uninstall
 
 ### 4. Configure your AI Agent
 ```bash
-player2-kanban agent-config install cursor  # or claude, gemini, windsurf, antigravity, copilot, codex
+player2-kanban agent-config install all     # install for every supported IDE
+# Or pick one: cursor, claude, gemini, windsurf, antigravity, copilot, codex
+player2-kanban agent-config install cursor
 ```
+
+| Agent | File Created |
+|-------|-------------|
+| cursor | `.cursor/rules/player2.mdc` |
+| claude | `CLAUDE.md` |
+| gemini | `.gemini/GEMINI.md` |
+| windsurf | `.windsurfrules` |
+| antigravity | `.agent/rules/player2.md` |
+| copilot | `.github/copilot-instructions.md` |
+| codex | `AGENTS.md` |
 
 ## Strict Mode Enforcement
 
