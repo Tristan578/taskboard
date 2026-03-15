@@ -52,6 +52,7 @@ func (m *mockStore) GetPendingSyncJobs() ([]models.SyncJob, error) {
 	return []models.SyncJob{{ID: "j1", ProjectID: "p1", Action: "full_sync"}}, nil
 }
 func (m *mockStore) UpdateSyncJobStatus(id, status string, attempts int, lastError string) error { return nil }
+func (m *mockStore) UpdateSyncJobRetry(id string, attempts int, lastError string, nextRetryAt time.Time) error { return nil }
 func (m *mockStore) ListLabels() ([]models.Label, error) { return nil, nil }
 func (m *mockStore) GetLabel(id string) (*models.Label, error) { return nil, nil }
 func (m *mockStore) CreateLabel(req models.CreateLabelRequest) (*models.Label, error) { return nil, nil }
@@ -282,3 +283,53 @@ func TestStripMetadata(t *testing.T) {
 }
 
 func intPtr(i int) *int { return &i }
+
+func TestCalculateNextRetry(t *testing.T) {
+	// Attempt 0: ~30s +/- 25%
+	r0 := CalculateNextRetry(0)
+	d0 := time.Until(r0)
+	if d0 < 20*time.Second || d0 > 45*time.Second {
+		t.Errorf("attempt 0: expected ~30s, got %v", d0)
+	}
+
+	// Attempt 3: ~240s +/- 25%
+	r3 := CalculateNextRetry(3)
+	d3 := time.Until(r3)
+	if d3 < 150*time.Second || d3 > 350*time.Second {
+		t.Errorf("attempt 3: expected ~240s, got %v", d3)
+	}
+
+	// High attempt: capped at 1 hour
+	r10 := CalculateNextRetry(10)
+	d10 := time.Until(r10)
+	if d10 > 75*time.Minute {
+		t.Errorf("attempt 10: expected cap ~1h, got %v", d10)
+	}
+}
+
+func TestRateLimitError(t *testing.T) {
+	resetAt := time.Now().Add(5 * time.Minute)
+	err := &RateLimitError{ResetAt: resetAt}
+	if err.Error() == "" {
+		t.Error("expected non-empty error message")
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Error("expected rate limit in error message")
+	}
+}
+
+func TestWorker_ProcessJob_Backoff(t *testing.T) {
+	// Worker with a store that will make sync fail
+	s := &mockStore{project: &models.Project{ID: "p1", GitHubRepo: "o/r"}}
+	client := NewClient(context.Background(), "f") // Invalid token → will fail
+	worker := NewWorker(s, client)
+
+	job := models.SyncJob{
+		ID:        "j1",
+		ProjectID: "p1",
+		Action:    "full_sync",
+		Attempts:  0,
+	}
+	// Should not panic - exercises the backoff path
+	worker.processJob(context.Background(), job)
+}

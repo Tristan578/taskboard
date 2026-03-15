@@ -948,7 +948,11 @@ func (s *Store) QueueSyncJob(projectID, ticketID, action string, payload any) er
 }
 
 func (s *Store) GetPendingSyncJobs() ([]models.SyncJob, error) {
-	rows, err := s.db.Query("SELECT id, project_id, COALESCE(ticket_id, ''), action, COALESCE(payload, ''), status, attempts, COALESCE(last_error, ''), created_at, updated_at FROM sync_jobs WHERE status IN ('pending', 'failed') AND attempts < 5 ORDER BY created_at ASC")
+	now := time.Now()
+	rows, err := s.db.Query(`SELECT id, project_id, COALESCE(ticket_id, ''), action, COALESCE(payload, ''), status, attempts, COALESCE(last_error, ''), next_retry_at, created_at, updated_at
+		FROM sync_jobs WHERE status IN ('pending', 'failed') AND attempts < 5
+		AND (next_retry_at IS NULL OR next_retry_at <= ?)
+		ORDER BY created_at ASC`, now)
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +961,7 @@ func (s *Store) GetPendingSyncJobs() ([]models.SyncJob, error) {
 	var jobs []models.SyncJob
 	for rows.Next() {
 		var j models.SyncJob
-		if err := rows.Scan(&j.ID, &j.ProjectID, &j.TicketID, &j.Action, &j.Payload, &j.Status, &j.Attempts, &j.LastError, &j.CreatedAt, &j.UpdatedAt); err != nil {
+		if err := rows.Scan(&j.ID, &j.ProjectID, &j.TicketID, &j.Action, &j.Payload, &j.Status, &j.Attempts, &j.LastError, &j.NextRetryAt, &j.CreatedAt, &j.UpdatedAt); err != nil {
 			return nil, err
 		}
 		jobs = append(jobs, j)
@@ -973,4 +977,40 @@ func (s *Store) UpdateSyncJobStatus(id, status string, attempts int, lastError s
 	return err
 }
 
+func (s *Store) UpdateSyncJobRetry(id string, attempts int, lastError string, nextRetryAt time.Time) error {
+	_, err := s.db.Exec(
+		"UPDATE sync_jobs SET status = 'failed', attempts = ?, last_error = ?, next_retry_at = ?, updated_at = ? WHERE id = ?",
+		attempts, lastError, nextRetryAt, time.Now(), id,
+	)
+	return err
+}
 
+// SyncStatus holds aggregate sync queue metrics.
+type SyncStatus struct {
+	PendingJobs int        `json:"pendingJobs"`
+	FailedJobs  int        `json:"failedJobs"`
+	LastSyncAt  *time.Time `json:"lastSyncAt,omitempty"`
+}
+
+// GetSyncStatus returns aggregate sync queue metrics.
+func (s *Store) GetSyncStatus() (*SyncStatus, error) {
+	status := &SyncStatus{}
+
+	row := s.db.QueryRow("SELECT COUNT(*) FROM sync_jobs WHERE status = 'pending'")
+	if err := row.Scan(&status.PendingJobs); err != nil {
+		return nil, err
+	}
+
+	row = s.db.QueryRow("SELECT COUNT(*) FROM sync_jobs WHERE status = 'failed'")
+	if err := row.Scan(&status.FailedJobs); err != nil {
+		return nil, err
+	}
+
+	var lastSync sql.NullTime
+	row = s.db.QueryRow("SELECT MAX(updated_at) FROM sync_jobs WHERE status = 'completed'")
+	if err := row.Scan(&lastSync); err == nil && lastSync.Valid {
+		status.LastSyncAt = &lastSync.Time
+	}
+
+	return status, nil
+}

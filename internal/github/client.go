@@ -61,6 +61,15 @@ func (c *Client) GQL() *githubv4.Client {
 	return c.gql
 }
 
+// RateLimitError is returned when the GitHub API rate limit is nearly exhausted.
+type RateLimitError struct {
+	ResetAt time.Time
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("github rate limit exceeded, resets at %s", e.ResetAt.Format(time.RFC3339))
+}
+
 type Issue struct {
 	Number    int
 	Title     string
@@ -130,13 +139,23 @@ func (c *Client) GetIssues(ctx context.Context, owner, repo string) ([]Issue, er
 	return allIssues, nil
 }
 
+func checkRateLimit(resp *github.Response) error {
+	if resp != nil && resp.Rate.Limit > 0 && resp.Rate.Remaining < 10 {
+		return &RateLimitError{ResetAt: resp.Rate.Reset.Time}
+	}
+	return nil
+}
+
 func (c *Client) CreateIssue(ctx context.Context, owner, repo string, title, body string) (int, error) {
-	issue, _, err := c.rest.Issues.Create(ctx, owner, repo, &github.IssueRequest{
+	issue, resp, err := c.rest.Issues.Create(ctx, owner, repo, &github.IssueRequest{
 		Title: &title,
 		Body:  &body,
 	})
 	if err != nil {
 		return 0, err
+	}
+	if rlErr := checkRateLimit(resp); rlErr != nil {
+		return issue.GetNumber(), rlErr
 	}
 	return issue.GetNumber(), nil
 }
@@ -147,8 +166,11 @@ func (c *Client) UpdateIssue(ctx context.Context, owner, repo string, number int
 		Body:  &body,
 		State: &state,
 	}
-	_, _, err := c.rest.Issues.Edit(ctx, owner, repo, number, req)
-	return err
+	_, resp, err := c.rest.Issues.Edit(ctx, owner, repo, number, req)
+	if err != nil {
+		return err
+	}
+	return checkRateLimit(resp)
 }
 
 func ParseRepo(repoStr string) (owner, repo string, err error) {
