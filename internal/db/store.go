@@ -984,3 +984,33 @@ func (s *Store) UpdateSyncJobRetry(id string, attempts int, lastError string, ne
 	)
 	return err
 }
+
+// SyncStatus holds aggregate sync queue metrics.
+type SyncStatus struct {
+	PendingJobs int        `json:"pendingJobs"`
+	FailedJobs  int        `json:"failedJobs"`
+	LastSyncAt  *time.Time `json:"lastSyncAt,omitempty"`
+}
+
+// GetSyncStatus returns aggregate sync queue metrics.
+func (s *Store) GetSyncStatus() (*SyncStatus, error) {
+	status := &SyncStatus{}
+
+	row := s.db.QueryRow("SELECT COUNT(*) FROM sync_jobs WHERE status = 'pending'")
+	if err := row.Scan(&status.PendingJobs); err != nil {
+		return nil, err
+	}
+
+	row = s.db.QueryRow("SELECT COUNT(*) FROM sync_jobs WHERE status = 'failed'")
+	if err := row.Scan(&status.FailedJobs); err != nil {
+		return nil, err
+	}
+
+	var lastSync sql.NullTime
+	row = s.db.QueryRow("SELECT MAX(updated_at) FROM sync_jobs WHERE status = 'completed'")
+	if err := row.Scan(&lastSync); err == nil && lastSync.Valid {
+		status.LastSyncAt = &lastSync.Time
+	}
+
+	return status, nil
+}

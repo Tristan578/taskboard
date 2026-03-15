@@ -1554,4 +1554,54 @@ func TestServer_LogLevelFiltering(t *testing.T) {
 	}
 }
 
+func TestServer_HealthCheck(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
+	if _, ok := resp["uptime"]; !ok {
+		t.Error("expected uptime field in response")
+	}
+}
+
+func TestServer_SyncStatus(t *testing.T) {
+	srv, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create a project and queue a sync job
+	proj, _ := store.CreateProject(models.CreateProjectRequest{Name: "SyncProj", Prefix: "SS"})
+	_ = store.QueueSyncJob(proj.ID, "", "full_sync", nil)
+
+	req := httptest.NewRequest("GET", "/api/sync/status", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp["pendingJobs"].(float64) < 1 {
+		t.Errorf("expected at least 1 pending job, got %v", resp["pendingJobs"])
+	}
+}
+
 // ============================================================

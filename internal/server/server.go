@@ -23,12 +23,13 @@ import (
 )
 
 type Server struct {
-	store  *db.Store
-	router chi.Router
+	store     *db.Store
+	router    chi.Router
+	startedAt time.Time
 }
 
 func New(store *db.Store, webFS fs.FS) *Server {
-	s := &Server{store: store}
+	s := &Server{store: store, startedAt: time.Now()}
 	s.setupRoutes(webFS)
 	return s
 }
@@ -147,6 +148,8 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 
 		r.Get("/board", s.getBoard)
 		r.Get("/terminal/ws", s.handleTerminalWS)
+		r.Get("/health", s.healthCheck)
+		r.Get("/sync/status", s.syncStatus)
 	})
 
 	if webFS != nil {
@@ -796,4 +799,30 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
+	status := "ok"
+	code := http.StatusOK
+
+	if err := s.store.Ping(); err != nil {
+		status = "degraded"
+		code = http.StatusServiceUnavailable
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": status,
+		"uptime": time.Since(s.startedAt).String(),
+	})
+}
+
+func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
+	ss, err := s.store.GetSyncStatus()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, ss)
 }
