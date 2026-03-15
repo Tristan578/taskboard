@@ -17,7 +17,7 @@ This project is a fork of the excellent [tcarac/taskboard](https://github.com/tc
 - **GitHub Sync Engine** — Bidirectional sync between local SQLite and GitHub Issues. Metadata is stored in hidden HTML comments.
 - **Strict Mode** — Enforce professional standards. When enabled, tickets *must* have a User Story and Acceptance Criteria (Gherkin) before they can be created or updated.
 - **Git Hooks** — Automated sync on `git push` and `git pull` via installed `pre-push` and `post-merge` hooks.
-- **Embedded Terminal** — Run AI coding agents directly from the web UI.
+- **Embedded Terminal** — Full interactive shell in the web UI. Uses ConPTY on Windows (PowerShell/cmd.exe) and PTY on macOS/Linux (bash/zsh). Run commands, AI agents, or debug directly from the board.
 
 ## Requirements
 
@@ -91,8 +91,20 @@ player2-kanban hook uninstall
 
 ### 4. Configure your AI Agent
 ```bash
-player2-kanban agent-config install cursor  # or claude, gemini, windsurf, antigravity, copilot, codex
+player2-kanban agent-config install all     # install for every supported IDE
+# Or pick one: cursor, claude, gemini, windsurf, antigravity, copilot, codex
+player2-kanban agent-config install cursor
 ```
+
+| Agent | File Created |
+|-------|-------------|
+| cursor | `.cursor/rules/player2.mdc` |
+| claude | `CLAUDE.md` |
+| gemini | `.gemini/GEMINI.md` |
+| windsurf | `.windsurfrules` |
+| antigravity | `.agent/rules/player2.md` |
+| copilot | `.github/copilot-instructions.md` |
+| codex | `AGENTS.md` |
 
 ## Strict Mode Enforcement
 
