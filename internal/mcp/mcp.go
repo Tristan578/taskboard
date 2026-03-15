@@ -189,7 +189,8 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			Status string `json:"status"`
 		}
 		_ = json.Unmarshal(args, &a)
-		return s.store.ListProjects(a.Status)
+		projects, _, err := s.store.ListProjects(a.Status)
+		return projects, err
 
 	case "get_project":
 		var a struct {
@@ -223,7 +224,8 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 		return map[string]bool{"deleted": true}, s.store.DeleteProject(a.ID)
 
 	case "list_teams":
-		return s.store.ListTeams()
+		teams, _, err := s.store.ListTeams()
+		return teams, err
 
 	case "get_team":
 		var a struct {
@@ -259,7 +261,8 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 	case "list_tickets":
 		var a models.TicketFilter
 		_ = json.Unmarshal(args, &a)
-		return s.store.ListTickets(a)
+		tickets, _, err := s.store.ListTickets(a)
+		return tickets, err
 
 	case "get_ticket":
 		var a struct {

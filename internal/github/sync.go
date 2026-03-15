@@ -89,7 +89,7 @@ func stripMetadata(body string) string {
 
 func SyncProject(ctx context.Context, client *Client, store interface {
 	GetProject(id string) (*models.Project, error)
-	ListTickets(filter models.TicketFilter) ([]models.Ticket, error)
+	ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error)
 	GetTicket(id string) (*models.Ticket, error)
 	UpdateTicket(id string, req models.UpdateTicketRequest) (*models.Ticket, error)
 	CreateTicket(req models.CreateTicketRequest) (*models.Ticket, error)
@@ -120,8 +120,8 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 		return fmt.Errorf("fetching github issues: %w", err)
 	}
 
-	// 2. Fetch Local Tickets
-	localTickets, err := store.ListTickets(models.TicketFilter{ProjectID: projectID})
+	// 2. Fetch Local Tickets (no pagination limit for sync - fetch all)
+	localTickets, _, err := store.ListTickets(models.TicketFilter{ProjectID: projectID})
 	if err != nil {
 		return fmt.Errorf("listing local tickets: %w", err)
 	}

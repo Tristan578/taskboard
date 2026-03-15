@@ -29,7 +29,7 @@ type mockStore struct {
 }
 
 func (m *mockStore) GetProject(id string) (*models.Project, error) { return m.project, nil }
-func (m *mockStore) ListTickets(filter models.TicketFilter) ([]models.Ticket, error) { return m.tickets, nil }
+func (m *mockStore) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error) { return m.tickets, len(m.tickets), nil }
 func (m *mockStore) GetTicket(id string) (*models.Ticket, error) {
 	for _, t := range m.tickets {
 		if t.ID == id { return &t, nil }

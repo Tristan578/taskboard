@@ -199,22 +199,37 @@ type UpdateLabelRequest struct {
 	Color *string `json:"color,omitempty"`
 }
 
+type PaginationParams struct {
+	Limit  int
+	Offset int
+}
+
+type PaginatedResult[T any] struct {
+	Data    []T  `json:"data"`
+	Total   int  `json:"total"`
+	Limit   int  `json:"limit"`
+	Offset  int  `json:"offset"`
+	HasMore bool `json:"hasMore"`
+}
+
 type TicketFilter struct {
 	ProjectID string
 	TeamID    string
 	Status    string
 	Priority  string
+	Limit     int
+	Offset    int
 }
 
 type SyncJob struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"projectId"`
-	TicketID  string    `json:"ticketId,omitempty"`
-	Action    string    `json:"action"`
-	Payload   string    `json:"payload,omitempty"`
-	Status    string    `json:"status"`
-	Attempts  int       `json:"attempts"`
-	LastError string    `json:"lastError,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          string     `json:"id"`
+	ProjectID   string     `json:"projectId"`
+	TicketID    string     `json:"ticketId,omitempty"`
+	Action      string     `json:"action"`
+	Payload     string     `json:"payload,omitempty"`
+	Status      string     `json:"status"`
+	Attempts    int        `json:"attempts"`
+	LastError   string     `json:"lastError,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
 }

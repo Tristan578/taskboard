@@ -68,6 +68,26 @@ export interface Board {
   columns: BoardColumn[];
 }
 
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export interface PaginationParams {
+  limit?: number;
+  offset?: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildQuery(params: any): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== "");
+  if (entries.length === 0) return "";
+  return "?" + entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -84,6 +104,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   projects: {
     list: () => request<Project[]>("/api/projects"),
+    listPaginated: (params: PaginationParams & { status?: string }) =>
+      request<PaginatedResult<Project>>(`/api/projects${buildQuery(params)}`),
     get: (id: string) => request<Project>(`/api/projects/${id}`),
     create: (data: Partial<Project>) =>
       request<Project>("/api/projects", {
@@ -101,6 +123,8 @@ export const api = {
 
   teams: {
     list: () => request<Team[]>("/api/teams"),
+    listPaginated: (params: PaginationParams) =>
+      request<PaginatedResult<Team>>(`/api/teams${buildQuery(params)}`),
     get: (id: string) => request<Team>(`/api/teams/${id}`),
     create: (data: Partial<Team>) =>
       request<Team>("/api/teams", {
@@ -118,6 +142,8 @@ export const api = {
 
   tickets: {
     list: () => request<Ticket[]>("/api/tickets"),
+    listPaginated: (params: PaginationParams & { projectId?: string; status?: string; priority?: string }) =>
+      request<PaginatedResult<Ticket>>(`/api/tickets${buildQuery(params)}`),
     get: (id: string) => request<Ticket>(`/api/tickets/${id}`),
     create: (data: Partial<Ticket>) =>
       request<Ticket>("/api/tickets", {
@@ -152,6 +178,8 @@ export const api = {
 
   labels: {
     list: () => request<Label[]>("/api/labels"),
+    listPaginated: (params: PaginationParams) =>
+      request<PaginatedResult<Label>>(`/api/labels${buildQuery(params)}`),
     create: (data: Partial<Label>) =>
       request<Label>("/api/labels", {
         method: "POST",

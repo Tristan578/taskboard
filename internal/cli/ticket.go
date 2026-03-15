@@ -21,7 +21,7 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tickets, err := store.ListTickets(models.TicketFilter{
+			tickets, _, err := store.ListTickets(models.TicketFilter{
 				ProjectID: projectID,
 				Status:    status,
 				Priority:  priority,

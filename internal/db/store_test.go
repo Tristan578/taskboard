@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,29 +67,48 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	
 	newName := "P2"
-	_, _ = s.UpdateProject(p.ID, models.UpdateProjectRequest{Name: &newName})
+	newPrefix := "P2X"
+	newDesc := "D2"
+	newIcon := "I2"
+	newColor := "C2"
+	newStatus := "archived"
+	newRepo := "owner/repo2"
+	newStrict := true
+	_, _ = s.UpdateProject(p.ID, models.UpdateProjectRequest{
+		Name: &newName, Prefix: &newPrefix, Description: &newDesc,
+		Icon: &newIcon, Color: &newColor, Status: &newStatus,
+		GitHubRepo: &newRepo, Strict: &newStrict,
+	})
 	_, _ = s.GetProject(p.ID)
-	_, _ = s.ListProjects("active")
-	_, _ = s.ListProjects("")
+	_, _, _ = s.ListProjects("archived")
+	_, _, _ = s.ListProjects("")
 
 	tm, _ := s.CreateTeam(models.CreateTeamRequest{Name: "T1"})
-	_, _ = s.UpdateTeam(tm.ID, models.UpdateTeamRequest{Name: &newName})
+	newTeamName := "T2"
+	newTeamColor := "blue"
+	_, _ = s.UpdateTeam(tm.ID, models.UpdateTeamRequest{Name: &newTeamName, Color: &newTeamColor})
 	_, _ = s.GetTeam(tm.ID)
-	_, _ = s.ListTeams()
+	_, _, _ = s.ListTeams()
 
 	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
 	_, _ = s.UpdateTicket(tick.ID, models.UpdateTicketRequest{Title: &newName})
 	_, _ = s.GetTicket(tick.ID)
-	_, _ = s.ListTickets(models.TicketFilter{ProjectID: p.ID})
+	// Filter permutations
+	urgent := "urgent"
+	_, _, _ = s.ListTickets(models.TicketFilter{ProjectID: p.ID, TeamID: tm.ID, Status: "archived", Priority: urgent})
 	_, _ = s.MoveTicket(tick.ID, models.MoveTicketRequest{Status: "done"})
 
 	l, _ := s.CreateLabel(models.CreateLabelRequest{Name: "L1", Color: "red"})
-	_, _ = s.UpdateLabel(l.ID, models.UpdateLabelRequest{Name: &newName})
+	newLabelName := "L2"
+	newLabelColor := "blue"
+	_, _ = s.UpdateLabel(l.ID, models.UpdateLabelRequest{Name: &newLabelName, Color: &newLabelColor})
 	_, _ = s.GetLabel(l.ID)
-	_, _ = s.ListLabels()
+	_, _, _ = s.ListLabels()
 
 	st, _ := s.AddSubtask(tick.ID, models.CreateSubtaskRequest{Title: "S1"})
 	_, _ = s.GetSubtask(st.ID)
+	// This should hit getTicketSubtasks via GetTicket
+	_, _ = s.GetTicket(tick.ID)
 	_, _ = s.ToggleSubtask(st.ID)
 	_ = s.DeleteSubtask(st.ID)
 
@@ -122,8 +142,10 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	_ = s.UpdateSyncJobStatus(jobs[0].ID, "failed", 1, "err")
 	_, _ = s.GetPendingSyncJobs()
 
+	// Ensure ListDeletedTickets hits its loop
 	_ = s.DeleteTicket(tick.ID)
-	_, _ = s.ListDeletedTickets(p.ID)
+	deleted, _ := s.ListDeletedTickets(p.ID)
+	if len(deleted) == 0 { t.Error("expected deleted ticket") }
 	_ = s.PurgeDeletedTickets(p.ID)
 	_ = s.DeleteTeam(tm.ID)
 	_ = s.DeleteLabel(l.ID)
@@ -160,6 +182,13 @@ func TestStore_Errors(t *testing.T) {
 	if _, err := s.GetBoard("1"); err == nil { t.Errorf("22") }
 	if _, err := s.GetPendingSyncJobs(); err == nil { t.Errorf("23") }
 	if err := s.UpdateSyncJobStatus("1", "done", 1, ""); err == nil { t.Errorf("24") }
+	if _, _, err := s.ListProjects(""); err == nil { t.Errorf("25") }
+	if _, _, err := s.ListTeams(); err == nil { t.Errorf("26") }
+	if _, _, err := s.ListTickets(models.TicketFilter{}); err == nil { t.Errorf("27") }
+	if _, err := s.ListDeletedTickets("1"); err == nil { t.Errorf("28") }
+	if _, _, err := s.ListLabels(); err == nil { t.Errorf("29") }
+	if _, err := s.GetSubtask("1"); err == nil { t.Errorf("30") }
+	if err := s.PurgeDeletedTickets("1"); err == nil { t.Errorf("31") }
 }
 
 func TestStore_ClearData_Jobs(t *testing.T) {
@@ -177,6 +206,66 @@ func TestStore_Get_NotFound(t *testing.T) {
 	if st, _ := s.GetSubtask("none"); st != nil { t.Errorf("3") }
 }
 
+func TestDB_DefaultDBPath_Fallback(t *testing.T) {
+	// On Windows, unsetting APPDATA should trigger the fallback
+	oldApp := os.Getenv("APPDATA")
+	os.Setenv("APPDATA", "")
+	defer os.Setenv("APPDATA", oldApp)
+
+	path, err := DefaultDBPath()
+	if err != nil {
+		t.Fatalf("DefaultDBPath failed: %v", err)
+	}
+	if path == "" {
+		t.Error("expected non-empty path")
+	}
+}
+
+func TestDB_OpenAt_MkdirError(t *testing.T) {
+	// Use a path that's a file, so MkdirAll fails
+	tempFile, _ := os.CreateTemp("", "mkdir-err")
+	defer os.Remove(tempFile.Name())
+	
+	path := filepath.Join(tempFile.Name(), "db.sqlite")
+	_, err := OpenAt(path)
+	if err == nil {
+		t.Error("expected error for MkdirAll on a file path")
+	}
+}
+
+func TestDB_runMigrations_Error(t *testing.T) {
+	dbConn, _ := sql.Open("sqlite", ":memory:")
+	_ = dbConn.Close() // Close it to make Exec fail
+	
+	err := runMigrations(dbConn)
+	if err == nil {
+		t.Error("expected error from runMigrations on closed DB")
+	}
+}
+
+func TestDB_runMigrations_Idempotent(t *testing.T) {
+	dbConn, _ := sql.Open("sqlite", ":memory:")
+	defer dbConn.Close()
+	
+	err := runMigrations(dbConn)
+	if err != nil { t.Fatalf("first migration: %v", err) }
+	
+	err = runMigrations(dbConn)
+	if err != nil { t.Fatalf("second migration: %v", err) }
+}
+
+func TestStore_MoveTicket_Position(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+	
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+	
+	pos := 500.0
+	_, err := s.MoveTicket(tick.ID, models.MoveTicketRequest{Status: "in_progress", Position: &pos})
+	if err != nil { t.Fatalf("MoveTicket failed: %v", err) }
+}
+
 func TestStore_InvalidDate(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
@@ -185,3 +274,166 @@ func TestStore_InvalidDate(t *testing.T) {
 	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", DueDate: &badDate})
 	if tick.DueDate != nil { t.Errorf("1") }
 }
+
+func TestStore_Pagination_Tickets(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+
+	// Create 10 tickets
+	for i := 0; i < 10; i++ {
+		_, _ = s.CreateTicket(models.CreateTicketRequest{
+			ProjectID: p.ID, Title: fmt.Sprintf("T%d", i),
+		})
+	}
+
+	// Paginate with limit=3
+	tickets, total, err := s.ListTickets(models.TicketFilter{
+		ProjectID: p.ID, Limit: 3, Offset: 0,
+	})
+	if err != nil {
+		t.Fatalf("ListTickets: %v", err)
+	}
+	if total != 10 {
+		t.Errorf("expected total=10, got %d", total)
+	}
+	if len(tickets) != 3 {
+		t.Errorf("expected 3 tickets, got %d", len(tickets))
+	}
+
+	// Second page
+	tickets2, total2, _ := s.ListTickets(models.TicketFilter{
+		ProjectID: p.ID, Limit: 3, Offset: 3,
+	})
+	if total2 != 10 {
+		t.Errorf("expected total=10, got %d", total2)
+	}
+	if len(tickets2) != 3 {
+		t.Errorf("expected 3 tickets, got %d", len(tickets2))
+	}
+
+	// No pagination (all tickets)
+	all, allTotal, _ := s.ListTickets(models.TicketFilter{ProjectID: p.ID})
+	if len(all) != 10 || allTotal != 10 {
+		t.Errorf("expected 10 tickets without pagination, got %d (total %d)", len(all), allTotal)
+	}
+}
+
+func TestStore_Pagination_Projects(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	for i := 0; i < 5; i++ {
+		_, _ = s.CreateProject(models.CreateProjectRequest{
+			Name: fmt.Sprintf("P%d", i), Prefix: fmt.Sprintf("P%d", i),
+		})
+	}
+
+	projects, total, err := s.ListProjects("", 2, 0)
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if total != 5 {
+		t.Errorf("expected total=5, got %d", total)
+	}
+	if len(projects) != 2 {
+		t.Errorf("expected 2 projects, got %d", len(projects))
+	}
+}
+
+func TestStore_Pagination_Teams(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	for i := 0; i < 5; i++ {
+		_, _ = s.CreateTeam(models.CreateTeamRequest{Name: fmt.Sprintf("T%d", i)})
+	}
+
+	teams, total, err := s.ListTeams(2, 0)
+	if err != nil {
+		t.Fatalf("ListTeams: %v", err)
+	}
+	if total != 5 {
+		t.Errorf("expected total=5, got %d", total)
+	}
+	if len(teams) != 2 {
+		t.Errorf("expected 2 teams, got %d", len(teams))
+	}
+}
+
+func TestStore_Pagination_Labels(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	for i := 0; i < 5; i++ {
+		_, _ = s.CreateLabel(models.CreateLabelRequest{Name: fmt.Sprintf("L%d", i), Color: "red"})
+	}
+
+	labels, total, err := s.ListLabels(2, 0)
+	if err != nil {
+		t.Fatalf("ListLabels: %v", err)
+	}
+	if total != 5 {
+		t.Errorf("expected total=5, got %d", total)
+	}
+	if len(labels) != 2 {
+		t.Errorf("expected 2 labels, got %d", len(labels))
+	}
+}
+
+func TestStore_BatchLoad(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
+	l, _ := s.CreateLabel(models.CreateLabelRequest{Name: "Bug", Color: "red"})
+	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", Labels: []string{l.ID}})
+	_, _ = s.AddSubtask(t1.ID, models.CreateSubtaskRequest{Title: "S1"})
+
+	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", BlockedBy: []string{t1.ID}})
+
+	// ListTickets uses batch loading now
+	tickets, _, err := s.ListTickets(models.TicketFilter{ProjectID: p.ID})
+	if err != nil {
+		t.Fatalf("ListTickets: %v", err)
+	}
+
+	// Find t1 and t2 in the results
+	for _, tick := range tickets {
+		if tick.ID == t1.ID {
+			if len(tick.Labels) != 1 || tick.Labels[0].ID != l.ID {
+				t.Errorf("expected label on t1, got %+v", tick.Labels)
+			}
+			if len(tick.Subtasks) != 1 {
+				t.Errorf("expected 1 subtask on t1, got %d", len(tick.Subtasks))
+			}
+		}
+		if tick.ID == t2.ID {
+			if len(tick.BlockedBy) != 1 || tick.BlockedBy[0] != t1.ID {
+				t.Errorf("expected blockedBy on t2, got %+v", tick.BlockedBy)
+			}
+		}
+	}
+}
+
+func TestStore_NormalizePagination(t *testing.T) {
+	l, o := normalizePagination(0, 0)
+	if l != 50 || o != 0 { t.Errorf("default: got %d, %d", l, o) }
+
+	l, o = normalizePagination(300, -5)
+	if l != 200 || o != 0 { t.Errorf("cap: got %d, %d", l, o) }
+
+	l, o = normalizePagination(10, 5)
+	if l != 10 || o != 5 { t.Errorf("normal: got %d, %d", l, o) }
+}
+
+func TestStore_Ping(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	if err := s.Ping(); err != nil {
+		t.Errorf("Ping failed: %v", err)
+	}
+}
+

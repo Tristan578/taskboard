@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -54,18 +55,49 @@ func newID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
 }
 
-func (s *Store) ListProjects(status string) ([]models.Project, error) {
-	query := "SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, created_at, updated_at FROM projects"
+func normalizePagination(limit, offset int) (int, int) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}
+
+func (s *Store) Ping() error {
+	return s.db.Ping()
+}
+
+func (s *Store) ListProjects(status string, limitOffset ...int) ([]models.Project, int, error) {
+	whereClause := ""
 	args := []any{}
 	if status != "" {
-		query += " WHERE status = ?"
+		whereClause = " WHERE status = ?"
 		args = append(args, status)
 	}
-	query += " ORDER BY created_at DESC"
+
+	// Count total
+	var total int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM projects"+whereClause, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := "SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, created_at, updated_at FROM projects" + whereClause + " ORDER BY created_at DESC"
+
+	// Apply pagination if provided
+	if len(limitOffset) >= 2 && limitOffset[0] > 0 {
+		limit, offset := normalizePagination(limitOffset[0], limitOffset[1])
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -73,11 +105,11 @@ func (s *Store) ListProjects(status string) ([]models.Project, error) {
 	for rows.Next() {
 		var p models.Project
 		if err := rows.Scan(&p.ID, &p.Name, &p.Prefix, &p.Description, &p.Icon, &p.Color, &p.Status, &p.GitHubRepo, &p.GitHubLastSynced, &p.Strict, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		projects = append(projects, p)
 	}
-	return projects, rows.Err()
+	return projects, total, rows.Err()
 }
 
 func (s *Store) GetProject(id string) (*models.Project, error) {
@@ -160,10 +192,24 @@ func (s *Store) DeleteProject(id string) error {
 	return err
 }
 
-func (s *Store) ListTeams() ([]models.Team, error) {
-	rows, err := s.db.Query("SELECT id, name, color, created_at FROM teams ORDER BY created_at DESC")
+func (s *Store) ListTeams(limitOffset ...int) ([]models.Team, int, error) {
+	var total int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM teams").Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := "SELECT id, name, color, created_at FROM teams ORDER BY created_at DESC"
+	var args []any
+
+	if len(limitOffset) >= 2 && limitOffset[0] > 0 {
+		limit, offset := normalizePagination(limitOffset[0], limitOffset[1])
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -171,11 +217,11 @@ func (s *Store) ListTeams() ([]models.Team, error) {
 	for rows.Next() {
 		var t models.Team
 		if err := rows.Scan(&t.ID, &t.Name, &t.Color, &t.CreatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		teams = append(teams, t)
 	}
-	return teams, rows.Err()
+	return teams, total, rows.Err()
 }
 
 func (s *Store) GetTeam(id string) (*models.Team, error) {
@@ -232,35 +278,53 @@ func (s *Store) nextTicketNumber(projectID string) (int, error) {
 	return num, err
 }
 
-func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, error) {
+func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error) {
+	whereClause := " WHERE t.deleted_at IS NULL"
+	args := []any{}
+
+	if filter.ProjectID != "" {
+		whereClause += " AND t.project_id = ?"
+		args = append(args, filter.ProjectID)
+	}
+	if filter.TeamID != "" {
+		whereClause += " AND t.team_id = ?"
+		args = append(args, filter.TeamID)
+	}
+	if filter.Status != "" {
+		whereClause += " AND t.status = ?"
+		args = append(args, filter.Status)
+	}
+	if filter.Priority != "" {
+		whereClause += " AND t.priority = ?"
+		args = append(args, filter.Priority)
+	}
+
+	// Count total matching
+	var total int
+	countQuery := "SELECT COUNT(*) FROM tickets t" + whereClause
+	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
 	query := `SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
 		t.is_draft, t.created_at, t.updated_at, COALESCE(p.prefix, '') as project_prefix
-		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id WHERE t.deleted_at IS NULL`
-	args := []any{}
+		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id` + whereClause +
+		" ORDER BY t.lexo_rank ASC, t.created_at DESC"
 
-	if filter.ProjectID != "" {
-		query += " AND t.project_id = ?"
-		args = append(args, filter.ProjectID)
-	}
-	if filter.TeamID != "" {
-		query += " AND t.team_id = ?"
-		args = append(args, filter.TeamID)
-	}
-	if filter.Status != "" {
-		query += " AND t.status = ?"
-		args = append(args, filter.Status)
-	}
-	if filter.Priority != "" {
-		query += " AND t.priority = ?"
-		args = append(args, filter.Priority)
-	}
-	query += " ORDER BY t.lexo_rank ASC, t.created_at DESC"
+	queryArgs := make([]any, len(args))
+	copy(queryArgs, args)
 
-	rows, err := s.db.Query(query, args...)
+	if filter.Limit > 0 {
+		limit, offset := normalizePagination(filter.Limit, filter.Offset)
+		query += " LIMIT ? OFFSET ?"
+		queryArgs = append(queryArgs, limit, offset)
+	}
+
+	rows, err := s.db.Query(query, queryArgs...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -271,21 +335,33 @@ func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, error)
 			&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 			&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
 			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.ProjectPrefix); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		tickets = append(tickets, t)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	for i := range tickets {
-		tickets[i].Labels, _ = s.getTicketLabels(tickets[i].ID)
-		tickets[i].Subtasks, _ = s.getTicketSubtasks(tickets[i].ID)
-		tickets[i].BlockedBy, _ = s.getTicketBlockedBy(tickets[i].ID)
+	// Batch load related data (fixes N+1 query)
+	if len(tickets) > 0 {
+		ids := make([]string, len(tickets))
+		for i, t := range tickets {
+			ids[i] = t.ID
+		}
+
+		labelsMap, _ := s.batchGetTicketLabels(ids)
+		subtasksMap, _ := s.batchGetTicketSubtasks(ids)
+		blockedByMap, _ := s.batchGetTicketBlockedBy(ids)
+
+		for i := range tickets {
+			tickets[i].Labels = labelsMap[tickets[i].ID]
+			tickets[i].Subtasks = subtasksMap[tickets[i].ID]
+			tickets[i].BlockedBy = blockedByMap[tickets[i].ID]
+		}
 	}
 
-	return tickets, nil
+	return tickets, total, nil
 }
 
 func (s *Store) GetTicket(id string) (*models.Ticket, error) {
@@ -538,7 +614,7 @@ func (s *Store) GetBoard(projectID string) (*models.Board, error) {
 		if projectID != "" {
 			filter.ProjectID = projectID
 		}
-		tickets, err := s.ListTickets(filter)
+		tickets, _, err := s.ListTickets(filter)
 		if err != nil {
 			return nil, err
 		}
@@ -554,10 +630,24 @@ func (s *Store) GetBoard(projectID string) (*models.Board, error) {
 	return board, nil
 }
 
-func (s *Store) ListLabels() ([]models.Label, error) {
-	rows, err := s.db.Query("SELECT id, name, color FROM labels ORDER BY name")
+func (s *Store) ListLabels(limitOffset ...int) ([]models.Label, int, error) {
+	var total int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM labels").Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := "SELECT id, name, color FROM labels ORDER BY name"
+	var args []any
+
+	if len(limitOffset) >= 2 && limitOffset[0] > 0 {
+		limit, offset := normalizePagination(limitOffset[0], limitOffset[1])
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -565,11 +655,11 @@ func (s *Store) ListLabels() ([]models.Label, error) {
 	for rows.Next() {
 		var l models.Label
 		if err := rows.Scan(&l.ID, &l.Name, &l.Color); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		labels = append(labels, l)
 	}
-	return labels, rows.Err()
+	return labels, total, rows.Err()
 }
 
 func (s *Store) GetLabel(id string) (*models.Label, error) {
@@ -709,6 +799,145 @@ func (s *Store) getTicketBlockedBy(ticketID string) ([]string, error) {
 	return ids, rows.Err()
 }
 
+// Batch loading functions to fix N+1 queries
+
+func (s *Store) batchGetTicketLabels(ids []string) (map[string][]models.Label, error) {
+	result := make(map[string][]models.Label)
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	// Process in chunks of 500 to stay under SQLite's 999-param limit
+	for i := 0; i < len(ids); i += 500 {
+		end := i + 500
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[i:end]
+
+		placeholders := make([]string, len(chunk))
+		args := make([]any, len(chunk))
+		for j, id := range chunk {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+
+		// #nosec G201 -- placeholders are "?" literals, not user input
+		query := fmt.Sprintf("SELECT tl.ticket_id, l.id, l.name, l.color FROM labels l JOIN ticket_labels tl ON l.id = tl.label_id WHERE tl.ticket_id IN (%s)",
+			strings.Join(placeholders, ","))
+
+		rows, err := s.db.Query(query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var ticketID string
+			var l models.Label
+			if err := rows.Scan(&ticketID, &l.ID, &l.Name, &l.Color); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			result[ticketID] = append(result[ticketID], l)
+		}
+		_ = rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) batchGetTicketSubtasks(ids []string) (map[string][]models.Subtask, error) {
+	result := make(map[string][]models.Subtask)
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	for i := 0; i < len(ids); i += 500 {
+		end := i + 500
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[i:end]
+
+		placeholders := make([]string, len(chunk))
+		args := make([]any, len(chunk))
+		for j, id := range chunk {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+
+		// #nosec G201 -- placeholders are "?" literals, not user input
+		query := fmt.Sprintf("SELECT id, ticket_id, title, completed, position FROM subtasks WHERE ticket_id IN (%s) ORDER BY position",
+			strings.Join(placeholders, ","))
+
+		rows, err := s.db.Query(query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var st models.Subtask
+			if err := rows.Scan(&st.ID, &st.TicketID, &st.Title, &st.Completed, &st.Position); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			result[st.TicketID] = append(result[st.TicketID], st)
+		}
+		_ = rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) batchGetTicketBlockedBy(ids []string) (map[string][]string, error) {
+	result := make(map[string][]string)
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	for i := 0; i < len(ids); i += 500 {
+		end := i + 500
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[i:end]
+
+		placeholders := make([]string, len(chunk))
+		args := make([]any, len(chunk))
+		for j, id := range chunk {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+
+		// #nosec G201 -- placeholders are "?" literals, not user input
+		query := fmt.Sprintf("SELECT ticket_id, blocked_by_id FROM ticket_dependencies WHERE ticket_id IN (%s)",
+			strings.Join(placeholders, ","))
+
+		rows, err := s.db.Query(query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var ticketID, blockedByID string
+			if err := rows.Scan(&ticketID, &blockedByID); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			result[ticketID] = append(result[ticketID], blockedByID)
+		}
+		_ = rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
 func (s *Store) QueueSyncJob(projectID, ticketID, action string, payload any) error {
 	payloadJSON, _ := json.Marshal(payload)
 	_, err := s.db.Exec(
@@ -743,3 +972,5 @@ func (s *Store) UpdateSyncJobStatus(id, status string, attempts int, lastError s
 	)
 	return err
 }
+
+

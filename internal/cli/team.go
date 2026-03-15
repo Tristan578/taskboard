@@ -19,7 +19,7 @@ func teamCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			teams, err := store.ListTeams()
+			teams, _, err := store.ListTeams()
 			if err != nil {
 				return err
 			}
