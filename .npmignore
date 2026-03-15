@@ -1,0 +1,26 @@
+# Only publish what's needed for npm install:
+# - package.json (automatic)
+# - scripts/install.js (postinstall)
+# - bin/ (created at install time)
+# - README.md (automatic)
+# - LICENSE (automatic)
+
+# Exclude everything else
+internal/
+cmd/
+web/
+.github/
+screenshots/
+*.go
+go.mod
+go.sum
+Makefile
+*.md
+!README.md
+!LICENSE
+.claude/
+coverage*
+cli*
+*.html
+*.txt
+*.out
