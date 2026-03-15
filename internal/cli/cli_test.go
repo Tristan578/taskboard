@@ -692,6 +692,173 @@ func TestCLI_Execute_Exit(t *testing.T) {
 	}
 }
 
+func TestCLI_ProjectCreateWithFlags(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "cli-projflags")
+	defer os.RemoveAll(tempDir)
+	oldApp := os.Getenv("APPDATA")
+	os.Setenv("APPDATA", tempDir)
+	defer os.Setenv("APPDATA", oldApp)
+	os.Setenv("GO_TEST", "1")
+	defer os.Setenv("GO_TEST", "")
+	dbPath = ""
+
+	run := func(args ...string) error {
+		root := NewRootCmd(testSkillsFS)
+		root.SetArgs(args)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		return root.Execute()
+	}
+
+	// Create with icon and color flags
+	if err := run("project", "create", "IconProj", "--prefix", "IC", "--icon", "🚀", "--color", "#FF0000"); err != nil {
+		t.Fatalf("project create with icon/color: %v", err)
+	}
+}
+
+func TestCLI_TeamCreateAndDelete(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "cli-teamcrud")
+	defer os.RemoveAll(tempDir)
+	oldApp := os.Getenv("APPDATA")
+	os.Setenv("APPDATA", tempDir)
+	defer os.Setenv("APPDATA", oldApp)
+	os.Setenv("GO_TEST", "1")
+	defer os.Setenv("GO_TEST", "")
+	dbPath = ""
+
+	run := func(args ...string) error {
+		root := NewRootCmd(testSkillsFS)
+		root.SetArgs(args)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		return root.Execute()
+	}
+
+	// Create with color flag (covers team.go:47-55)
+	if err := run("team", "create", "RedTeam", "--color", "#FF0000"); err != nil {
+		t.Fatalf("team create with color: %v", err)
+	}
+
+	// Create via store to get real ID for delete
+	database, _ := db.Open()
+	store := db.NewStore(database)
+	team, _ := store.CreateTeam(models.CreateTeamRequest{Name: "Deletable"})
+	database.Close()
+
+	// Delete with real ID (covers team.go:69-72)
+	if err := run("team", "delete", team.ID); err != nil {
+		t.Fatalf("team delete: %v", err)
+	}
+}
+
+func TestCLI_ProjectDeleteSuccess(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "cli-projdel")
+	defer os.RemoveAll(tempDir)
+	oldApp := os.Getenv("APPDATA")
+	os.Setenv("APPDATA", tempDir)
+	defer os.Setenv("APPDATA", oldApp)
+	os.Setenv("GO_TEST", "1")
+	defer os.Setenv("GO_TEST", "")
+	dbPath = ""
+
+	run := func(args ...string) error {
+		root := NewRootCmd(testSkillsFS)
+		root.SetArgs(args)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		return root.Execute()
+	}
+
+	// Create via store
+	database, _ := db.Open()
+	store := db.NewStore(database)
+	proj, _ := store.CreateProject(models.CreateProjectRequest{Name: "DelProj", Prefix: "DP"})
+	database.Close()
+
+	// Delete with real ID (covers project.go:82-86)
+	if err := run("project", "delete", proj.ID); err != nil {
+		t.Fatalf("project delete: %v", err)
+	}
+}
+
+func TestCLI_ProjectLinkSuccess(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "cli-projlink")
+	defer os.RemoveAll(tempDir)
+	oldApp := os.Getenv("APPDATA")
+	os.Setenv("APPDATA", tempDir)
+	defer os.Setenv("APPDATA", oldApp)
+	os.Setenv("GO_TEST", "1")
+	defer os.Setenv("GO_TEST", "")
+	dbPath = ""
+
+	run := func(args ...string) error {
+		root := NewRootCmd(testSkillsFS)
+		root.SetArgs(args)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		return root.Execute()
+	}
+
+	// Create via store
+	database, _ := db.Open()
+	store := db.NewStore(database)
+	proj, _ := store.CreateProject(models.CreateProjectRequest{Name: "LinkProj", Prefix: "LK"})
+	database.Close()
+
+	// Link with real ID (covers project.go:99-107)
+	if err := run("project", "link", proj.ID, "owner/repo"); err != nil {
+		t.Fatalf("project link: %v", err)
+	}
+}
+
+func TestCLI_HookInstallInGitRepo(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "cli-hookinst")
+	defer os.RemoveAll(tempDir)
+	oldApp := os.Getenv("APPDATA")
+	os.Setenv("APPDATA", tempDir)
+	defer os.Setenv("APPDATA", oldApp)
+	os.Setenv("GO_TEST", "1")
+	defer os.Setenv("GO_TEST", "")
+	dbPath = ""
+
+	oldWd, _ := os.Getwd()
+	_ = os.Chdir(tempDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	// Create .git/hooks dir
+	_ = os.MkdirAll(filepath.Join(tempDir, ".git", "hooks"), 0755)
+
+	run := func(args ...string) error {
+		root := NewRootCmd(testSkillsFS)
+		root.SetArgs(args)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		return root.Execute()
+	}
+
+	// Create a project first
+	if err := run("project", "create", "HookProj", "--prefix", "HP"); err != nil {
+		t.Fatalf("project create: %v", err)
+	}
+
+	// Hook install with valid project (covers hook.go success paths)
+	if err := run("hook", "install", "HookProj"); err != nil {
+		t.Fatalf("hook install: %v", err)
+	}
+
+	// Verify hook files were created
+	if _, err := os.Stat(filepath.Join(tempDir, ".git", "hooks", "pre-push")); err != nil {
+		t.Error("expected pre-push hook to exist")
+	}
+}
+
+func TestCLI_IsTestBinary(t *testing.T) {
+	// Covers root.go isTestBinary (should return true since we're in a test)
+	if !isTestBinary() {
+		t.Error("expected isTestBinary() to return true in test context")
+	}
+}
+
 func TestCLI_ZZ_NoLeakedProcesses(t *testing.T) {
 	// Hard gate: fail the suite if any cli.test processes leaked.
 	// Name starts with ZZ_ so it runs last alphabetically.
