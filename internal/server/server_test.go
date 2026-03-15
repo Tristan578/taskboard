@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"fmt"
+	"net"
+	"time"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -408,4 +412,113 @@ func TestServer_TerminalWS_Full(t *testing.T) {
 	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{invalid}`))
 	
 	_ = ws.Close()
+}
+
+func TestServer_ListenAndServe(t *testing.T) {
+	database, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	_, _ = database.Exec(`
+		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
+		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
+		CREATE TABLE subtasks (id TEXT PRIMARY KEY, ticket_id TEXT, title TEXT, completed BOOLEAN DEFAULT 0, position INTEGER);
+		CREATE TABLE ticket_labels (ticket_id TEXT, label_id TEXT, PRIMARY KEY (ticket_id, label_id));
+		CREATE TABLE ticket_dependencies (ticket_id TEXT, blocked_by_id TEXT, PRIMARY KEY (ticket_id, blocked_by_id));
+	`)
+
+	store := db.NewStore(database)
+	srv := New(store, nil)
+
+	// Find a free port
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	// Start server in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe(port)
+	}()
+
+	// Give server time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Make a request
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/projects", port))
+	if err != nil {
+		t.Fatalf("GET /api/projects failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestServer_UpdateTicket_StrictModeReject(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create a strict project
+	p, _ := store.CreateProject(models.CreateProjectRequest{
+		Name: "StrictProj", Prefix: "SP", Strict: true,
+	})
+
+	// Create a draft ticket (no userStory/AC)
+	ticket, _ := store.CreateTicket(models.CreateTicketRequest{
+		ProjectID: p.ID, Title: "Draft", IsDraft: true,
+	})
+
+	// Try to un-draft without US/AC → should get 400
+	isDraft := false
+	updateBody, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
+	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for strict mode reject, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Strict Mode") {
+		t.Errorf("Expected strict mode error message, got %q", w.Body.String())
+	}
+}
+
+func TestServer_HandleTerminalWS(t *testing.T) {
+	s, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/terminal/ws"
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("WebSocket dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	// On Windows, PTY start will fail, so we should get an error message
+	// On non-Windows, PTY may work - either way we test the upgrade path
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err == nil {
+		// Got a message - on Windows this should be the error JSON
+		if strings.Contains(string(msg), "failed to start terminal") {
+			// Expected on Windows - PTY not available
+			return
+		}
+		// On Linux/Mac, this would be actual terminal output - that's fine too
+	}
+	// Connection may have closed or timed out - both acceptable outcomes
 }
