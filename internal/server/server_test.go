@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1488,6 +1489,68 @@ func TestServer_ListProjects_Pagination(t *testing.T) {
 	}
 	if len(result.Data) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(result.Data))
+	}
+}
+
+func TestServer_RequestLoggerMiddleware(t *testing.T) {
+	// Verify requestLogger middleware logs method, path, status, duration.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	old := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(old)
+
+	handler := requestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+
+	req := httptest.NewRequest("GET", "/test/path", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "http request") {
+		t.Errorf("expected 'http request' in log, got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "GET") {
+		t.Errorf("expected method 'GET' in log, got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "/test/path") {
+		t.Errorf("expected path '/test/path' in log, got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "418") {
+		t.Errorf("expected status 418 in log, got: %s", logOutput)
+	}
+}
+
+func TestServer_LogLevelFiltering(t *testing.T) {
+	// Verify slog level filtering works as expected for LOG_LEVEL config.
+	tests := []struct {
+		level      slog.Level
+		debugShown bool
+		infoShown  bool
+	}{
+		{slog.LevelDebug, true, true},
+		{slog.LevelInfo, false, true},
+		{slog.LevelError, false, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.level.String(), func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: tc.level}))
+
+			logger.Debug("debug-msg")
+			logger.Info("info-msg")
+
+			out := buf.String()
+			if tc.debugShown != strings.Contains(out, "debug-msg") {
+				t.Errorf("level=%s: expected debug shown=%v, log: %s", tc.level, tc.debugShown, out)
+			}
+			if tc.infoShown != strings.Contains(out, "info-msg") {
+				t.Errorf("level=%s: expected info shown=%v, log: %s", tc.level, tc.infoShown, out)
+			}
+		})
 	}
 }
 
