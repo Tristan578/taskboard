@@ -822,6 +822,7 @@ func (s *Store) batchGetTicketLabels(ids []string) (map[string][]models.Label, e
 			args[j] = id
 		}
 
+		// #nosec G201 -- placeholders are "?" literals, not user input
 		query := fmt.Sprintf("SELECT tl.ticket_id, l.id, l.name, l.color FROM labels l JOIN ticket_labels tl ON l.id = tl.label_id WHERE tl.ticket_id IN (%s)",
 			strings.Join(placeholders, ","))
 
@@ -834,12 +835,12 @@ func (s *Store) batchGetTicketLabels(ids []string) (map[string][]models.Label, e
 			var ticketID string
 			var l models.Label
 			if err := rows.Scan(&ticketID, &l.ID, &l.Name, &l.Color); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, err
 			}
 			result[ticketID] = append(result[ticketID], l)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
@@ -867,6 +868,7 @@ func (s *Store) batchGetTicketSubtasks(ids []string) (map[string][]models.Subtas
 			args[j] = id
 		}
 
+		// #nosec G201 -- placeholders are "?" literals, not user input
 		query := fmt.Sprintf("SELECT id, ticket_id, title, completed, position FROM subtasks WHERE ticket_id IN (%s) ORDER BY position",
 			strings.Join(placeholders, ","))
 
@@ -878,12 +880,12 @@ func (s *Store) batchGetTicketSubtasks(ids []string) (map[string][]models.Subtas
 		for rows.Next() {
 			var st models.Subtask
 			if err := rows.Scan(&st.ID, &st.TicketID, &st.Title, &st.Completed, &st.Position); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, err
 			}
 			result[st.TicketID] = append(result[st.TicketID], st)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
@@ -911,6 +913,7 @@ func (s *Store) batchGetTicketBlockedBy(ids []string) (map[string][]string, erro
 			args[j] = id
 		}
 
+		// #nosec G201 -- placeholders are "?" literals, not user input
 		query := fmt.Sprintf("SELECT ticket_id, blocked_by_id FROM ticket_dependencies WHERE ticket_id IN (%s)",
 			strings.Join(placeholders, ","))
 
@@ -922,12 +925,12 @@ func (s *Store) batchGetTicketBlockedBy(ids []string) (map[string][]string, erro
 		for rows.Next() {
 			var ticketID, blockedByID string
 			if err := rows.Scan(&ticketID, &blockedByID); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, err
 			}
 			result[ticketID] = append(result[ticketID], blockedByID)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
