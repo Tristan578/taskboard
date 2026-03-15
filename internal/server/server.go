@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 	"github.com/Tristan578/taskboard/internal/db"
+	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/models"
 )
 
@@ -825,5 +826,16 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, ss)
+
+	resp := map[string]any{
+		"pendingJobs": ss.PendingJobs,
+		"failedJobs":  ss.FailedJobs,
+		"lastSyncAt":  ss.LastSyncAt,
+	}
+
+	if rl := github.GetLastRateLimit(); rl != nil {
+		resp["rateLimit"] = rl
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
