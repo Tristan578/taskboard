@@ -195,7 +195,7 @@ func daemonize(port int) error {
 	if pid, err := readPID(pidPath); err == nil {
 		if p, err := os.FindProcess(pid); err == nil {
 			if err := p.Signal(syscall.Signal(0)); err == nil {
-				return fmt.Errorf("taskboard is already running (pid %d)", pid)
+				return fmt.Errorf("player2-kanban is already running (pid %d)", pid)
 			}
 		}
 	}

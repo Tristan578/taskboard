@@ -142,6 +142,29 @@ func projectCommands() *cobra.Command {
 	}
 	syncCmd.Flags().BoolVar(&syncAsync, "async", false, "queue the sync job and exit immediately")
 
-	cmd.AddCommand(listCmd, createCmd, deleteCmd, linkCmd, syncCmd)
+	syncStatusCmd := &cobra.Command{
+		Use:   "sync-status",
+		Short: "Show sync queue status (pending, failed, last sync time)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := openStore()
+			if err != nil {
+				return err
+			}
+			status, err := store.GetSyncStatus()
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Pending jobs: %d\n", status.PendingJobs)
+			cmd.Printf("Failed jobs:  %d\n", status.FailedJobs)
+			if status.LastSyncAt != nil {
+				cmd.Printf("Last sync:    %s\n", status.LastSyncAt.Format("2006-01-02 15:04:05"))
+			} else {
+				cmd.Println("Last sync:    never")
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, createCmd, deleteCmd, linkCmd, syncCmd, syncStatusCmd)
 	return cmd
 }
