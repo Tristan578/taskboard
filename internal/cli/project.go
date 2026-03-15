@@ -23,7 +23,7 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			projects, err := store.ListProjects("")
+			projects, _, err := store.ListProjects("")
 			if err != nil {
 				return err
 			}

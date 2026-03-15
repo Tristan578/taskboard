@@ -131,9 +131,29 @@ func decodeJSON(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+func parsePagination(r *http.Request) (limit, offset int) {
+	if v := r.URL.Query().Get("limit"); v != "" {
+		_, _ = fmt.Sscanf(v, "%d", &limit)
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		_, _ = fmt.Sscanf(v, "%d", &offset)
+	}
+	return
+}
+
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
-	projects, err := s.store.ListProjects(status)
+	limit, offset := parsePagination(r)
+
+	var projects []models.Project
+	var total int
+	var err error
+
+	if limit > 0 {
+		projects, total, err = s.store.ListProjects(status, limit, offset)
+	} else {
+		projects, total, err = s.store.ListProjects(status)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -141,7 +161,15 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 	if projects == nil {
 		projects = []models.Project{}
 	}
-	writeJSON(w, http.StatusOK, projects)
+
+	if limit > 0 {
+		writeJSON(w, http.StatusOK, models.PaginatedResult[models.Project]{
+			Data: projects, Total: total, Limit: limit, Offset: offset,
+			HasMore: offset+len(projects) < total,
+		})
+	} else {
+		writeJSON(w, http.StatusOK, projects)
+	}
 }
 
 func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +240,17 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listTeams(w http.ResponseWriter, r *http.Request) {
-	teams, err := s.store.ListTeams()
+	limit, offset := parsePagination(r)
+
+	var teams []models.Team
+	var total int
+	var err error
+
+	if limit > 0 {
+		teams, total, err = s.store.ListTeams(limit, offset)
+	} else {
+		teams, total, err = s.store.ListTeams()
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -220,7 +258,15 @@ func (s *Server) listTeams(w http.ResponseWriter, r *http.Request) {
 	if teams == nil {
 		teams = []models.Team{}
 	}
-	writeJSON(w, http.StatusOK, teams)
+
+	if limit > 0 {
+		writeJSON(w, http.StatusOK, models.PaginatedResult[models.Team]{
+			Data: teams, Total: total, Limit: limit, Offset: offset,
+			HasMore: offset+len(teams) < total,
+		})
+	} else {
+		writeJSON(w, http.StatusOK, teams)
+	}
 }
 
 func (s *Server) getTeam(w http.ResponseWriter, r *http.Request) {
@@ -291,13 +337,16 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r)
 	filter := models.TicketFilter{
 		ProjectID: r.URL.Query().Get("projectId"),
 		TeamID:    r.URL.Query().Get("teamId"),
 		Status:    r.URL.Query().Get("status"),
 		Priority:  r.URL.Query().Get("priority"),
+		Limit:     limit,
+		Offset:    offset,
 	}
-	tickets, err := s.store.ListTickets(filter)
+	tickets, total, err := s.store.ListTickets(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -305,7 +354,15 @@ func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
 	if tickets == nil {
 		tickets = []models.Ticket{}
 	}
-	writeJSON(w, http.StatusOK, tickets)
+
+	if limit > 0 {
+		writeJSON(w, http.StatusOK, models.PaginatedResult[models.Ticket]{
+			Data: tickets, Total: total, Limit: limit, Offset: offset,
+			HasMore: offset+len(tickets) < total,
+		})
+	} else {
+		writeJSON(w, http.StatusOK, tickets)
+	}
 }
 
 func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
@@ -528,7 +585,17 @@ func (s *Server) deleteSubtask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listLabels(w http.ResponseWriter, r *http.Request) {
-	labels, err := s.store.ListLabels()
+	limit, offset := parsePagination(r)
+
+	var labels []models.Label
+	var total int
+	var err error
+
+	if limit > 0 {
+		labels, total, err = s.store.ListLabels(limit, offset)
+	} else {
+		labels, total, err = s.store.ListLabels()
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -536,7 +603,15 @@ func (s *Server) listLabels(w http.ResponseWriter, r *http.Request) {
 	if labels == nil {
 		labels = []models.Label{}
 	}
-	writeJSON(w, http.StatusOK, labels)
+
+	if limit > 0 {
+		writeJSON(w, http.StatusOK, models.PaginatedResult[models.Label]{
+			Data: labels, Total: total, Limit: limit, Offset: offset,
+			HasMore: offset+len(labels) < total,
+		})
+	} else {
+		writeJSON(w, http.StatusOK, labels)
+	}
 }
 
 func (s *Server) createLabel(w http.ResponseWriter, r *http.Request) {

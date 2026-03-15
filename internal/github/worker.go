@@ -10,7 +10,7 @@ import (
 
 type Store interface {
 	GetProject(id string) (*models.Project, error)
-	ListTickets(filter models.TicketFilter) ([]models.Ticket, error)
+	ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error)
 	GetTicket(id string) (*models.Ticket, error)
 	UpdateTicket(id string, req models.UpdateTicketRequest) (*models.Ticket, error)
 	CreateTicket(req models.CreateTicketRequest) (*models.Ticket, error)
