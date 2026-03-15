@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Tristan578/taskboard/internal/models"
 	_ "modernc.org/sqlite"
@@ -21,7 +22,7 @@ func setupTestStore(t *testing.T) (*Store, func()) {
 		PRAGMA foreign_keys = ON;
 		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id) ON DELETE CASCADE, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
 		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
 		CREATE TABLE subtasks (id TEXT PRIMARY KEY, ticket_id TEXT REFERENCES tickets(id) ON DELETE CASCADE, title TEXT, completed BOOLEAN DEFAULT 0, position INTEGER);
@@ -437,3 +438,36 @@ func TestStore_Ping(t *testing.T) {
 	}
 }
 
+func TestStore_SyncJobRetry(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	_ = s.QueueSyncJob("p1", "t1", "sync", nil)
+	jobs, _ := s.GetPendingSyncJobs()
+	if len(jobs) == 0 {
+		t.Fatal("expected pending job")
+	}
+
+	// Set retry far in the future
+	futureRetry := time.Now().Add(1 * time.Hour)
+	err := s.UpdateSyncJobRetry(jobs[0].ID, 1, "temporary error", futureRetry)
+	if err != nil {
+		t.Fatalf("UpdateSyncJobRetry: %v", err)
+	}
+
+	// Job should NOT appear since next_retry_at is in the future
+	pending, _ := s.GetPendingSyncJobs()
+	if len(pending) != 0 {
+		t.Errorf("expected 0 pending jobs (retry in future), got %d", len(pending))
+	}
+
+	// Set retry in the past
+	pastRetry := time.Now().Add(-1 * time.Minute)
+	_ = s.UpdateSyncJobRetry(jobs[0].ID, 1, "retry now", pastRetry)
+
+	// Job should now appear
+	pending2, _ := s.GetPendingSyncJobs()
+	if len(pending2) != 1 {
+		t.Errorf("expected 1 pending job (retry in past), got %d", len(pending2))
+	}
+}
