@@ -36,7 +36,7 @@ func hookCommands() *cobra.Command {
 			hooks := []string{"pre-push", "post-merge"}
 			for _, hook := range hooks {
 				hookPath := filepath.Join(hooksDir, hook)
-				content := fmt.Sprintf("#!/bin/sh\n# player2-kanban auto-sync hook\nplayer2-kanban project sync %s --async\n", projectID)
+				content := fmt.Sprintf("#!/bin/sh\n# player2-kanban auto-sync hook\nif command -v player2-kanban >/dev/null 2>&1; then\n  player2-kanban project sync %s --async\nfi\n", projectID)
 				
 				// #nosec G306
 				if err := os.WriteFile(hookPath, []byte(content), 0700); err != nil {
