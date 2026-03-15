@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/Tristan578/taskboard/internal/models"
@@ -160,6 +161,7 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 			}
 			newTicket, err := store.CreateTicket(req)
 			if err != nil {
+				slog.Error("sync: failed to create local ticket from GitHub issue", "projectId", projectID, "issueNumber", ghIssue.Number, "error", err)
 				continue
 			}
 
@@ -168,6 +170,7 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 				GitHubIssueNumber: &ghIssue.Number,
 				LexoRank:          &meta.LexoRank,
 			}); err != nil {
+				slog.Error("sync: failed to update ticket with GitHub issue number", "ticketId", newTicket.ID, "issueNumber", ghIssue.Number, "error", err)
 				continue
 			}
 		} else {
@@ -186,6 +189,7 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 					TestingDetails:     &meta.TestingDetails,
 					LexoRank:           &meta.LexoRank,
 				}); err != nil {
+					slog.Error("sync: failed to update local ticket from GitHub", "ticketId", localTicket.ID, "issueNumber", ghIssue.Number, "error", err)
 					continue
 				}
 			}
@@ -199,11 +203,13 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 			body := FormatIssueBody(localTicket.Description, &localTicket)
 			num, err := client.CreateIssue(ctx, owner, repo, localTicket.Title, body)
 			if err != nil {
+				slog.Error("sync: failed to create GitHub issue from local ticket", "ticketId", localTicket.ID, "projectId", projectID, "error", err)
 				continue
 			}
 			if _, err := store.UpdateTicket(localTicket.ID, models.UpdateTicketRequest{
 				GitHubIssueNumber: &num,
 			}); err != nil {
+				slog.Error("sync: failed to update ticket with new GitHub issue number", "ticketId", localTicket.ID, "issueNumber", num, "error", err)
 				continue
 			}
 		} else {
@@ -212,7 +218,9 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 			if exists && localTicket.UpdatedAt.After(ghIssue.UpdatedAt) {
 				body := FormatIssueBody(localTicket.Description, &localTicket)
 				state := mapStatusToGHState(localTicket.Status)
-				_ = client.UpdateIssue(ctx, owner, repo, ghIssue.Number, localTicket.Title, body, state)
+				if err := client.UpdateIssue(ctx, owner, repo, ghIssue.Number, localTicket.Title, body, state); err != nil {
+					slog.Error("sync: failed to update GitHub issue", "ticketId", localTicket.ID, "issueNumber", ghIssue.Number, "error", err)
+				}
 			}
 		}
 	}
@@ -225,11 +233,15 @@ func SyncProject(ctx context.Context, client *Client, store interface {
 
 	// 5. Sync Deletions (Local -> GitHub)
 	deleted, err := store.ListDeletedTickets(projectID)
-	if err == nil {
+	if err != nil {
+		slog.Error("sync: failed to list deleted tickets", "projectId", projectID, "error", err)
+	} else {
 		for _, t := range deleted {
 			if t.GitHubIssueNumber != nil {
 				// Close the issue on GitHub
-				_ = client.UpdateIssue(ctx, owner, repo, *t.GitHubIssueNumber, t.Title, FormatIssueBody(t.Description, &t), "closed")
+				if err := client.UpdateIssue(ctx, owner, repo, *t.GitHubIssueNumber, t.Title, FormatIssueBody(t.Description, &t), "closed"); err != nil {
+					slog.Error("sync: failed to close deleted ticket on GitHub", "ticketId", t.ID, "issueNumber", *t.GitHubIssueNumber, "error", err)
+				}
 			}
 		}
 		if err := store.PurgeDeletedTickets(projectID); err != nil {
