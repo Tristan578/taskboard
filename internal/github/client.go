@@ -6,12 +6,50 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/go-github/v60/github"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
+
+// RateLimitInfo holds the last-seen GitHub API rate limit state.
+type RateLimitInfo struct {
+	Remaining int       `json:"remaining"`
+	Limit     int       `json:"limit"`
+	ResetAt   time.Time `json:"resetAt"`
+}
+
+// lastRateLimit stores the most recent rate limit info across all API calls.
+var (
+	lastRateLimit   *RateLimitInfo
+	rateLimitMu     sync.RWMutex
+)
+
+// GetLastRateLimit returns the most recently observed GitHub rate limit info.
+func GetLastRateLimit() *RateLimitInfo {
+	rateLimitMu.RLock()
+	defer rateLimitMu.RUnlock()
+	if lastRateLimit == nil {
+		return nil
+	}
+	copy := *lastRateLimit
+	return &copy
+}
+
+func storeRateLimit(resp *github.Response) {
+	if resp == nil || resp.Rate.Limit == 0 {
+		return
+	}
+	rateLimitMu.Lock()
+	lastRateLimit = &RateLimitInfo{
+		Remaining: resp.Rate.Remaining,
+		Limit:     resp.Rate.Limit,
+		ResetAt:   resp.Rate.Reset.Time,
+	}
+	rateLimitMu.Unlock()
+}
 
 type Client struct {
 	rest *github.Client
@@ -140,6 +178,7 @@ func (c *Client) GetIssues(ctx context.Context, owner, repo string) ([]Issue, er
 }
 
 func checkRateLimit(resp *github.Response) error {
+	storeRateLimit(resp)
 	if resp != nil && resp.Rate.Limit > 0 && resp.Rate.Remaining < 10 {
 		return &RateLimitError{ResetAt: resp.Rate.Reset.Time}
 	}
