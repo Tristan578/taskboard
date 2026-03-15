@@ -10,10 +10,16 @@ import (
 //go:embed web/dist
 var webEmbed embed.FS
 
-func main() {
-	webFS, err := fs.Sub(webEmbed, "web/dist")
+// webFS extracts the web/dist sub-filesystem from the embedded FS.
+// Returns nil if the sub-filesystem cannot be created.
+func webFS() fs.FS {
+	sub, err := fs.Sub(webEmbed, "web/dist")
 	if err != nil {
-		webFS = nil
+		return nil
 	}
-	cli.Execute(webFS)
+	return sub
+}
+
+func main() {
+	cli.Execute(webFS())
 }
