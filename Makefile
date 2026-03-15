@@ -1,4 +1,4 @@
-.PHONY: build dev frontend clean install
+.PHONY: build dev frontend clean install test kill-stale-tests
 
 BUILD_DIR := cmd/kanban
 BINARY := player2-kanban
@@ -25,5 +25,8 @@ install: build
 dev-frontend:
 	cd web && npm run dev
 
-test:
-	go test ./...
+kill-stale-tests:
+	@go run scripts/kill-stale-tests.go 2>/dev/null || true
+
+test: kill-stale-tests
+	go test ./... ; TEST_EXIT=$$? ; go run scripts/kill-stale-tests.go 2>/dev/null || true ; exit $$TEST_EXIT

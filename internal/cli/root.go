@@ -168,7 +168,25 @@ func openStore() (*db.Store, error) {
 	return db.NewStore(database), nil
 }
 
+func isTestBinary() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(exe))
+	return strings.HasSuffix(base, ".test") || strings.HasSuffix(base, ".test.exe")
+}
+
 func daemonize(port int) error {
+	// Guard: never spawn daemon processes from Go test binaries.
+	// Go test binaries always end in ".test" / ".test.exe" — this is
+	// automatic, requires no env var, and cannot be accidentally bypassed.
+	// Without this, daemonize() spawns immortal cli.test.exe children
+	// that accumulate across test runs and exhaust system resources.
+	if isTestBinary() {
+		return fmt.Errorf("daemonize disabled in test binary")
+	}
+
 	pidPath, err := pidFilePath()
 	if err != nil {
 		return err
