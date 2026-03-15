@@ -160,8 +160,15 @@ async function install() {
       fs.copyFileSync(expectedBinary, path.join(binDir, binaryName));
     }
 
-    // Make executable on Unix
-    if (os.platform() !== 'win32') {
+    // On Windows, also copy as the non-.exe name so npm's bin shim works.
+    // package.json "bin" points to ./bin/player2-kanban (no .exe).
+    if (os.platform() === 'win32') {
+      const withExt = path.join(binDir, binaryName);
+      const withoutExt = path.join(binDir, BINARY_NAME);
+      if (fs.existsSync(withExt) && withExt !== withoutExt) {
+        fs.copyFileSync(withExt, withoutExt);
+      }
+    } else {
       fs.chmodSync(path.join(binDir, binaryName), 0o755);
     }
 
