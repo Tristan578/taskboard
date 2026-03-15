@@ -86,6 +86,7 @@ func requestLogger(next http.Handler) http.Handler {
 		start := time.Now()
 		rr := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(rr, r)
+		// #nosec G706 -- slog uses structured key-value pairs, not format strings
 		slog.Info("http request",
 			"method", r.Method,
 			"path", r.URL.Path,
