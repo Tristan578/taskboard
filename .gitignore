@@ -1,5 +1,5 @@
 # Go
-/taskboard
+/player2-kanban
 *.exe
 *.exe~
 *.dll
@@ -20,7 +20,7 @@ web/node_modules/
 web/dist/
 
 # Embedded build artifacts
-cmd/taskboard/web/
+cmd/kanban/web/
 
 # OS
 .DS_Store
@@ -31,3 +31,15 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Claude Code project config
+.claude/
+
+# Generated agent config files (installed by `player2-kanban agent-config install`)
+CLAUDE.md
+AGENTS.md
+.windsurfrules
+.cursor/rules/player2.mdc
+.gemini/GEMINI.md
+.github/copilot-instructions.md
+.agent/rules/player2.md
