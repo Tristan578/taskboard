@@ -20,11 +20,12 @@
       "status": "pass",
       "evidence": [
         "internal/server/security_test.go",
+        "internal/server/connection_pilot_test.go",
         "local gosec and schema allowlist tests",
-        "https://github.com/Tristan578/taskboard/actions/runs/40060173135/job/120771749817"
+        "https://github.com/Tristan578/taskboard/actions/runs/40117820307/job/120942714669"
       ],
       "owner": "engineering",
-      "notes": "Local boundary, bounded files and schema allowlist tests pass. Current CI lint and security scanner pass; the constrained backup download path is documented at its scanner suppression."
+      "notes": "Local boundary, bounded requests/files and schema allowlist tests pass. Guided setup does not execute commands; foreign-origin pilot creation is rejected."
     },
     {
       "id": "G3",
@@ -32,11 +33,11 @@
       "severity": "high",
       "status": "pass",
       "evidence": [
-        "https://github.com/Tristan578/taskboard/actions/runs/40060173131",
+        "https://github.com/Tristan578/taskboard/actions/runs/40117820320",
         "packaging/smoke.py"
       ],
       "owner": "engineering",
-      "notes": "Commit a320efb: all six installer builds pass. Installed native workflows pass on Linux x64, macOS ARM64 and Windows x64, including Windows uninstall/data preservation. Linux ARM64, macOS x64 and Windows ARM64 are build-only checks on these runners; interactive launch is covered by G5."
+      "notes": "Commit 772babe: all six installer builds pass. Installed Linux x64, macOS ARM64 and Windows x64 checks exercise discovery, recovery, recurrence and the guided first task through the actual stdio MCP process. Windows uninstall preserves boards. Other architectures are build-only; interactive GUI behavior remains G5."
     },
     {
       "id": "G4",
@@ -44,11 +45,11 @@
       "severity": "high",
       "status": "pass",
       "evidence": [
-        "https://github.com/Tristan578/taskboard/actions/runs/40060173135/job/120771749765",
+        "https://github.com/Tristan578/taskboard/actions/runs/40117820307/job/120942714786",
         "internal/github/live_test.go"
       ],
       "owner": "engineering",
-      "notes": "Commit a320efb: one live API request imported 10 issues. Both job token permissions and transport prohibit writes. Real two-way writes remain G7."
+      "notes": "Read-only live GitHub import passes at 772babe. Both job permissions and transport prohibit writes; real two-way writes remain G7."
     },
     {
       "id": "G5",
@@ -59,7 +60,7 @@
         "Cloud browser returned ERR_CONNECTION_REFUSED for the running local app."
       ],
       "owner": "release owner",
-      "notes": "Requires interactive device and first-user validation; see usability-acceptance.md."
+      "notes": "No participant sessions observed. Follow docs/first-user-pilot.md and usability-acceptance.md; component tests do not replace physical-device or accessibility checks."
     },
     {
       "id": "G6",
@@ -80,7 +81,19 @@
       ],
       "owner": "release owner",
       "notes": "Real two-way changes need an explicitly disposable linked repository; deterministic integration tests cover the lifecycle."
+    },
+    {
+      "id": "G8",
+      "domain": "live-agent-client",
+      "severity": "high",
+      "status": "not-run",
+      "evidence": [
+        "docs/agent-connection.md",
+        "docs/first-user-pilot.md"
+      ],
+      "owner": "release owner",
+      "notes": "Codex CLI and Claude Code setup syntax was checked against official documentation. Signed-in vendor clients are unavailable here. Native MCP protocol automation passes, but actual client setup and participant use require a live pilot."
     }
   ],
-  "tested_code_commit": "a320efb9aa8f009c098bef6eb7e7cceb0e331fb0"
+  "tested_code_commit": "772babea8d81e6bf46445cf0d76a1b37556e54d9"
 }

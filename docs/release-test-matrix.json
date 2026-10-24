@@ -19,6 +19,11 @@
       "id": "CAP-4",
       "name": "local browser boundary",
       "critical": true
+    },
+    {
+      "id": "CAP-5",
+      "name": "guided agent connection",
+      "critical": true
     }
   ],
   "scenarios": [
@@ -214,6 +219,54 @@
       "automated": true,
       "evidence": "internal/server/security_test.go: TestLargeAPIRequestRejectedWithoutWriting",
       "description": "Reject before the downstream mutation writes data"
+    },
+    {
+      "id": "CAP-5-1",
+      "capability_id": "CAP-5",
+      "type": "positive",
+      "automated": true,
+      "description": "A real installed MCP process reports activity and saves a result; the browser API reflects Review and completion.",
+      "evidence": "packaging/smoke.py; https://github.com/Tristan578/taskboard/actions/runs/40117820320"
+    },
+    {
+      "id": "CAP-5-2",
+      "capability_id": "CAP-5",
+      "type": "negative",
+      "automated": true,
+      "description": "Unrelated sessions and Review without changed notes do not satisfy the connection pilot.",
+      "evidence": "internal/db/connection_test.go: TestConnectionPilotRequiresMatchingReportAndSavedResult"
+    },
+    {
+      "id": "CAP-5-3",
+      "capability_id": "CAP-5",
+      "type": "boundary",
+      "automated": true,
+      "description": "Retrying the same request returns the same task; invalid IDs, empty goals and oversized goals are rejected.",
+      "evidence": "internal/db/connection_test.go: TestConnectionPilotRequiresMatchingReportAndSavedResult, TestInvalidConnectionPilotDoesNotCreateBoards"
+    },
+    {
+      "id": "CAP-5-4",
+      "capability_id": "CAP-5",
+      "type": "dependency-failure",
+      "automated": true,
+      "description": "A failed creation request retains the goal and request ID for retry.",
+      "evidence": "web/src/pages/Connect.test.tsx: retains the goal and request ID when creation needs a retry"
+    },
+    {
+      "id": "CAP-5-5",
+      "capability_id": "CAP-5",
+      "type": "observability",
+      "automated": true,
+      "description": "Copied settings cannot claim a connection; an observed result resumes after reload and completion sends its revision.",
+      "evidence": "web/src/pages/Connect.test.tsx: requires an access acknowledgement and never calls copied settings a connection; resumes an observed result and requires a revision-checked review action"
+    },
+    {
+      "id": "CAP-5-6",
+      "capability_id": "CAP-5",
+      "type": "rollback",
+      "automated": true,
+      "description": "Rejected inputs and foreign origins create no extra boards.",
+      "evidence": "internal/db/connection_test.go: TestInvalidConnectionPilotDoesNotCreateBoards; internal/server/connection_pilot_test.go: TestConnectionPilotHTTPAndOriginBoundary"
     }
   ],
   "notes": [
