@@ -33,7 +33,15 @@ an active task with no activity is untracked. Heartbeats do not claim the agent 
 still running or that code has changed. Polling refreshes the browser every five
 seconds; a failed fetch keeps the last board and shows an error.
 
-Each process must use the same database. MCP works when the UI is closed, but the
+Each process must use the same database. The `status` command reports a running
+board only when the service identifies itself as
+Player2, is healthy, and uses the same database file as the agent. Different databases,
+unrelated HTTP services, old servers without database identity and redirects are not
+reported as a connected board. Reopening an existing instance checks its database and
+process identity before reusing it. Local file identity is a configuration check,
+not authentication against untrusted processes on the same computer.
+
+MCP works when the UI is closed, but the
 browser server must run with GITHUB_TOKEN for background synchronization. Linked
 projects are reconciled at startup and once a minute. Changes to published ticket
 fields queue durable jobs through database triggers, including CLI/MCP changes.

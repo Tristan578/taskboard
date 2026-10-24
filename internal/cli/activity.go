@@ -6,7 +6,6 @@ import (
 	"github.com/Tristan578/taskboard/internal/models"
 	"github.com/Tristan578/taskboard/internal/workflow"
 	"github.com/spf13/cobra"
-	"net/http"
 	"time"
 )
 
@@ -51,6 +50,9 @@ func completeCommand() *cobra.Command {
 func statusCommand() *cobra.Command {
 	var statusPort int
 	c := &cobra.Command{Use: "status", Short: "Discover local board, database and synchronization health", RunE: func(cmd *cobra.Command, args []string) error {
+		if statusPort < 1 || statusPort > 65535 {
+			return fmt.Errorf("choose a port between 1 and 65535")
+		}
 		s, err := openStore()
 		if err != nil {
 			return err
@@ -62,13 +64,12 @@ func statusCommand() *cobra.Command {
 			return err
 		}
 		url := fmt.Sprintf("http://127.0.0.1:%d", statusPort)
-		client := &http.Client{Timeout: 2 * time.Second}
-		res, err := client.Get(url + "/api/health")
-		running := err == nil && res.StatusCode == 200
-		if res != nil {
-			_ = res.Body.Close()
+		database, err := s.DatabasePath()
+		if err != nil {
+			return err
 		}
-		return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"boardUrl": url, "serverRunning": running, "sync": sync, "staleAfterMinutes": 15, "instruction": "Use MCP or CLI with the same --db; run player2-kanban start if the browser server is offline"})
+		probe := probeBoard(cmd.Context(), url, database, 2*time.Second)
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"boardUrl": url, "databasePath": database, "serverDatabasePath": probe.DatabasePath, "serverRunning": probe.Running, "serverDetected": probe.Detected, "databaseMatches": probe.DatabaseMatches, "sync": sync, "staleAfterMinutes": 15, "instruction": probe.Instruction})
 	}}
 	c.Flags().IntVar(&statusPort, "port", 3010, "board port")
 	return c

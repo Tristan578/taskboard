@@ -1618,7 +1618,7 @@ func TestServer_LogLevelFiltering(t *testing.T) {
 }
 
 func TestServer_HealthCheck(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
+	srv, store, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	req := localRequest("GET", "/api/health", nil)
@@ -1635,6 +1635,10 @@ func TestServer_HealthCheck(t *testing.T) {
 	}
 	if resp["status"] != "ok" {
 		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
+	path, err := store.DatabasePath()
+	if err != nil || resp["databasePath"] != path || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("health must identify the actual database without caching", resp, err)
 	}
 	if _, ok := resp["uptime"]; !ok {
 		t.Error("expected uptime field in response")

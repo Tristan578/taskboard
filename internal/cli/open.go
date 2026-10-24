@@ -1,10 +1,9 @@
 package cli
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"github.com/spf13/cobra"
-	"net/http"
 	"os/exec"
 	"runtime"
 	"time"
@@ -29,19 +28,10 @@ func openDesktop(port int, noBrowser bool) error {
 		return err
 	}
 	if pid, err := readPID(path); err == nil && processRunning(pid) {
-		client := &http.Client{Timeout: time.Second}
-		res, err := client.Get(url + "/api/health")
-		if err == nil {
-			var h struct {
-				PID int `json:"pid"`
-			}
-			_ = json.NewDecoder(res.Body).Decode(&h)
-			_ = res.Body.Close()
-			ready = res.StatusCode == 200 && h.PID == pid
+		if err := verifyRunningBoard(url, pid); err != nil {
+			return err
 		}
-		if !ready {
-			return fmt.Errorf("Player2 is already running on another port or is still starting; use player2-kanban status to check it")
-		}
+		ready = true
 	}
 	if !ready {
 		if err := daemonize(port); err != nil {
@@ -60,6 +50,22 @@ func openDesktop(port int, noBrowser bool) error {
 	}
 	return child.Wait()
 }
+
+func verifyRunningBoard(address string, pid int) error {
+	database, err := configuredDatabasePath()
+	if err != nil {
+		return err
+	}
+	probe := probeBoard(context.Background(), address, database, time.Second)
+	if !probe.Running {
+		return fmt.Errorf("could not reuse the running Player2 instance: %s Use player2-kanban status with the intended --db and --port", probe.Instruction)
+	}
+	if probe.PID != pid {
+		return fmt.Errorf("a different Player2 process answered on this port; check player2-kanban status before opening it")
+	}
+	return nil
+}
+
 func browserCommand(platform, url string) (string, []string) {
 	switch platform {
 	case "windows":

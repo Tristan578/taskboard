@@ -700,18 +700,26 @@ var wsUpgrader = websocket.Upgrader{
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
 	status := "ok"
 	code := http.StatusOK
+	databasePath := ""
 
 	if err := s.store.Ping(); err != nil {
 		status = "degraded"
 		code = http.StatusServiceUnavailable
+	} else if path, err := s.store.DatabasePath(); err != nil {
+		status = "degraded"
+		code = http.StatusServiceUnavailable
+	} else {
+		databasePath = path
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"name": "player2-kanban", "pid": os.Getpid(),
-		"status": status,
-		"uptime": time.Since(s.startedAt).String(),
+		"databasePath": databasePath,
+		"status":       status,
+		"uptime":       time.Since(s.startedAt).String(),
 	})
 }
 

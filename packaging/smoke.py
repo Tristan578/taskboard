@@ -60,6 +60,13 @@ with tempfile.TemporaryDirectory(prefix="player2-installed-smoke-") as tmp:
     try:
         run(binary, "--db", database, "open", "--port", port, "--no-browser", env=env)
         run(binary, "--db", database, "open", "--port", port, "--no-browser", env=env)
+        connection = json.loads(run(binary, "--db", database, "status", "--port", port, env=env).stdout)
+        assert connection["serverRunning"] and connection["databaseMatches"], "Installed app could not identify its board"
+        other_database = temp / "another-board.db"
+        mismatch = json.loads(run(binary, "--db", other_database, "status", "--port", port, env=env).stdout)
+        assert not mismatch["serverRunning"] and not mismatch["databaseMatches"], "Another database was reported as connected"
+        refused = subprocess.run([str(binary), "--db", str(other_database), "open", "--port", str(port), "--no-browser"], env=env, capture_output=True, text=True, timeout=15)
+        assert refused.returncode != 0, "Opening another database silently reused the visible board"
         project = api("/api/projects", "POST", {"name": "Installer smoke", "prefix": "SMK", "completionPolicy": "manual"})
         task = api("/api/tickets", "POST", {"projectId": project["id"], "title": "Plan the week", "dueDate": "2026-10-23", "repeatRule": "weekly"})
         completed = api(f'/api/tickets/{task["id"]}/move', "POST", {"status": "done", "expectedRevision": task["revision"]})
@@ -74,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix="player2-installed-smoke-") as tmp:
         assert len(api("/api/projects")) == 2
         with urllib.request.urlopen(base + "/recovery", timeout=10) as response:
             assert response.status == 200 and "script-src 'self'" in response.headers["Content-Security-Policy"]
-        print("PASS: installed app open/reuse, recurrence, delete/undo, backup/restore, retry, embedded UI.")
+        print("PASS: installed app open/reuse, matching database discovery, mismatch refusal, recurrence, delete/undo, backup/restore, retry, embedded UI.")
     finally:
         subprocess.run([str(binary), "--db", str(database), "stop"], env=env, capture_output=True, timeout=15)
         for _ in range(50):
