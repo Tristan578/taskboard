@@ -1,0 +1,256 @@
+{
+  "stories": [
+    {
+      "id": "P2-1",
+      "title": "Shared workflow and local boundary",
+      "objective": "Enforce all interfaces and verify completion",
+      "criticality": "critical",
+      "dependencies": [],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Strict-mode bypass fails through MCP and CLI"
+        },
+        {
+          "type": "negative",
+          "text": "Foreign browser origin cannot open terminal"
+        },
+        {
+          "type": "boundary",
+          "text": "Merged or successful deployment evidence permits Done"
+        }
+      ],
+      "test_plan": [
+        "Go workflow, MCP, HTTP and evidence tests"
+      ],
+      "observability": [
+        "validation errors",
+        "completion evidence"
+      ],
+      "manual_steps": [
+        "Review PR; validate native OS execution and live GitHub before publishing"
+      ],
+      "agent_constraints": [
+        "Keep existing user data; no direct main push or publication"
+      ],
+      "migration": "Additive migration 010; keep historical Done with legacy evidence label",
+      "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    },
+    {
+      "id": "P2-2",
+      "title": "Recoverable synchronization",
+      "objective": "Preserve both versions and reliable retry",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Concurrent edits create a conflict"
+        },
+        {
+          "type": "negative",
+          "text": "Failed closure retains tombstone"
+        },
+        {
+          "type": "boundary",
+          "text": "Unchanged sync does not rewrite remote"
+        }
+      ],
+      "test_plan": [
+        "HTTP fake GitHub plus real SQLite integration tests"
+      ],
+      "observability": [
+        "conflict snapshots",
+        "failed jobs",
+        "last successful sync"
+      ],
+      "manual_steps": [
+        "Review PR; validate native OS execution and live GitHub before publishing"
+      ],
+      "agent_constraints": [
+        "Keep existing user data; no direct main push or publication"
+      ],
+      "migration": "Additive migration 010; keep historical Done with legacy evidence label",
+      "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    },
+    {
+      "id": "P2-3",
+      "title": "Visible agent activity and packaging",
+      "objective": "Expose freshness and make installation discoverable",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1",
+        "P2-2"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Heartbeat appears in board data"
+        },
+        {
+          "type": "negative",
+          "text": "Live session takeover fails and stale takeover succeeds"
+        },
+        {
+          "type": "boundary",
+          "text": "Missing binary fails installation"
+        }
+      ],
+      "test_plan": [
+        "Go lease tests",
+        "React component tests",
+        "Node installer tests",
+        "platform CI"
+      ],
+      "observability": [
+        "stale and untracked warnings",
+        "installer failures",
+        "server readiness"
+      ],
+      "manual_steps": [
+        "Review PR; validate native OS execution and live GitHub before publishing"
+      ],
+      "agent_constraints": [
+        "Keep existing user data; no direct main push or publication"
+      ],
+      "migration": "Additive migration 010; keep historical Done with legacy evidence label",
+      "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    },
+    {
+      "id": "P2-4",
+      "title": "Automatic backups and guided recovery",
+      "objective": "Automatic backups and guided recovery",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "A valid backup restores separate boards with notes and relationships; retries return the same copies."
+        },
+        {
+          "type": "negative",
+          "text": "Invalid schema, damaged file, failed safety backup or failed insert leaves current boards unchanged."
+        },
+        {
+          "type": "boundary",
+          "text": "Retain 14 backups, limit uploads to 32 MiB, expire previews after an hour."
+        }
+      ],
+      "test_plan": [
+        "internal/db/recovery_test.go",
+        "internal/recovery/manager_test.go",
+        "internal/server/recovery_test.go",
+        "web/src/pages/Recovery.test.tsx"
+      ],
+      "observability": [
+        "Recovery errors and backup timestamps appear in the UI",
+        "CI records installation and live API outcomes"
+      ],
+      "manual_steps": [
+        "Interactive installation and nontechnical user acceptance on actual devices"
+      ],
+      "agent_constraints": [
+        "Preserve user data; no direct main push or publication"
+      ],
+      "migration_data": [
+        "Migration 012 adds repeat fields and idempotent restore receipts; existing data is retained"
+      ],
+      "rollback": [
+        "Restoration creates separate boards; a pre-restore safety backup is required; do not downgrade a migrated database without retaining it."
+      ]
+    },
+    {
+      "id": "P2-5",
+      "title": "Deleted-task undo and repeating work",
+      "objective": "Deleted-task undo and repeating work",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Undo restores notes/checklists; completing daily, weekly or monthly work creates one next occurrence."
+        },
+        {
+          "type": "negative",
+          "text": "Stale Undo cannot restore a later deletion; failure creating the repeat rolls back completion."
+        },
+        {
+          "type": "boundary",
+          "text": "Reopening/completing does not duplicate work; month-end and leap-year anchors survive edits."
+        }
+      ],
+      "test_plan": [
+        "internal/db/recovery_test.go",
+        "web/src/components/TicketPanel.test.tsx"
+      ],
+      "observability": [
+        "Recovery errors and backup timestamps appear in the UI",
+        "CI records installation and live API outcomes"
+      ],
+      "manual_steps": [
+        "Interactive installation and nontechnical user acceptance on actual devices"
+      ],
+      "agent_constraints": [
+        "Preserve user data; no direct main push or publication"
+      ],
+      "migration_data": [
+        "Migration 012 adds repeat fields and idempotent restore receipts; existing data is retained"
+      ],
+      "rollback": [
+        "Restoration creates separate boards; a pre-restore safety backup is required; do not downgrade a migrated database without retaining it."
+      ]
+    },
+    {
+      "id": "P2-6",
+      "title": "Installed package and live API verification",
+      "objective": "Installed package and live API verification",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-4",
+        "P2-5"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Install native packages in disposable runners and exercise core workflows; authenticate a read-only live GitHub import."
+        },
+        {
+          "type": "negative",
+          "text": "Live test transport refuses mutations; failed checks block the branch release assessment."
+        },
+        {
+          "type": "boundary",
+          "text": "Mismatched runner architectures build only; interactive usability remains explicitly unverified."
+        }
+      ],
+      "test_plan": [
+        "packaging/smoke.py",
+        "internal/github/live_test.go",
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml"
+      ],
+      "observability": [
+        "Recovery errors and backup timestamps appear in the UI",
+        "CI records installation and live API outcomes"
+      ],
+      "manual_steps": [
+        "Interactive installation and nontechnical user acceptance on actual devices"
+      ],
+      "agent_constraints": [
+        "Preserve user data; no direct main push or publication"
+      ],
+      "migration_data": [
+        "Migration 012 adds repeat fields and idempotent restore receipts; existing data is retained"
+      ],
+      "rollback": [
+        "Restoration creates separate boards; a pre-restore safety backup is required; do not downgrade a migrated database without retaining it."
+      ]
+    }
+  ]
+}

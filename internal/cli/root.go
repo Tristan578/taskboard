@@ -1,22 +1,26 @@
 package cli
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
+	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/db"
 	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/mcp"
 	"github.com/Tristan578/taskboard/internal/server"
-	)
+	"github.com/spf13/cobra"
+)
+
 var (
 	port       int
 	foreground bool
@@ -26,7 +30,8 @@ var (
 func NewRootCmd(webFS fs.FS) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "player2-kanban",
-		Short: "Agent-native local project management with GitHub sync and MCP",
+		Short: "A useful place for your plans, tasks, and AI work",
+		RunE:  func(cmd *cobra.Command, args []string) error { return openDesktop(3010, false) },
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to SQLite database file (default: OS config dir)")
 
@@ -41,8 +46,10 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
+
+			defer func() { _ = database.Close() }()
 			store := db.NewStore(database)
-			
+
 			// Start background worker if GITHUB_TOKEN is set
 			token := os.Getenv("GITHUB_TOKEN")
 			if token != "" {
@@ -53,6 +60,9 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			}
 
 			srv := server.New(store, webFS)
+			maintenance, cancel := context.WithCancel(cmd.Context())
+			defer cancel()
+			srv.StartMaintenance(maintenance)
 			return srv.ListenAndServe(port)
 		},
 	}
@@ -79,12 +89,12 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 				return fmt.Errorf("player2-kanban is not running")
 			}
 
-			if err := process.Signal(syscall.Signal(0)); err != nil {
+			if !processRunning(pid) {
 				_ = os.Remove(pidPath)
 				return fmt.Errorf("player2-kanban is not running (stale pid file removed)")
 			}
 
-			if err := process.Signal(syscall.SIGTERM); err != nil {
+			if err := stopProcess(process); err != nil {
 				_ = os.Remove(pidPath)
 				return fmt.Errorf("failed to stop player2-kanban: %w", err)
 			}
@@ -103,6 +113,8 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
+
+			defer func() { _ = database.Close() }()
 			store := db.NewStore(database)
 			server := mcp.NewServer(store)
 			return server.Run(os.Stdin, os.Stdout)
@@ -128,6 +140,8 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
+
+			defer func() { _ = store.Close() }()
 			if err := store.ClearData(); err != nil {
 				return fmt.Errorf("clearing data: %w", err)
 			}
@@ -137,7 +151,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 	}
 	clearCmd.Flags().BoolP("force", "f", false, "skip confirmation prompt")
 
-	root.AddCommand(startCmd, stopCmd, mcpCmd, clearCmd)
+	root.AddCommand(openCommand(), startCmd, stopCmd, mcpCmd, clearCmd, activityCommands(), statusCommand(), runCommand())
 	root.AddCommand(projectCommands())
 	root.AddCommand(teamCommands())
 	root.AddCommand(ticketCommands())
@@ -149,6 +163,9 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 func Execute(webFS fs.FS) {
 	if err := NewRootCmd(webFS).Execute(); err != nil {
+		if len(os.Args) == 1 {
+			showLaunchError(err)
+		}
 		os.Exit(1)
 	}
 }
@@ -165,6 +182,7 @@ func openStore() (*db.Store, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return db.NewStore(database), nil
 }
 
@@ -193,8 +211,8 @@ func daemonize(port int) error {
 	}
 
 	if pid, err := readPID(pidPath); err == nil {
-		if p, err := os.FindProcess(pid); err == nil {
-			if err := p.Signal(syscall.Signal(0)); err == nil {
+		if processRunning(pid) {
+			{
 				return fmt.Errorf("player2-kanban is already running (pid %d)", pid)
 			}
 		}
@@ -211,17 +229,53 @@ func daemonize(port int) error {
 	}
 	// #nosec G204
 	cmd := exec.Command(exe, daemonArgs...)
-	// cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detachProcess(cmd)
+	if err := os.MkdirAll(filepath.Dir(pidPath), 0700); err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(filepath.Join(filepath.Dir(pidPath), "server.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting daemon: %w", err)
 	}
 
 	if err := writePID(pidPath, cmd.Process.Pid); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		return fmt.Errorf("writing pid file: %w", err)
 	}
 
+	client := &http.Client{Timeout: 300 * time.Millisecond}
+	ready := false
+	for attempt := 0; attempt < 30; attempt++ {
+		res, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/health", port))
+		if err == nil {
+			var health struct {
+				PID int `json:"pid"`
+			}
+			_ = json.NewDecoder(res.Body).Decode(&health)
+			_ = res.Body.Close()
+			if res.StatusCode == 200 && health.PID == cmd.Process.Pid {
+				ready = true
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !ready {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = os.Remove(pidPath)
+		return fmt.Errorf("server failed readiness check; inspect %s", filepath.Join(filepath.Dir(pidPath), "server.log"))
+	}
 	fmt.Printf("Player2 Kanban running at http://localhost:%d (pid %d)\n", port, cmd.Process.Pid)
+	_ = cmd.Process.Release()
 	return nil
 }
 

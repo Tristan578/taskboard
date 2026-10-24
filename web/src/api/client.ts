@@ -1,4 +1,5 @@
 export interface Project {
+  completionPolicy?: "manual" | "verified";
   id: string;
   name: string;
   prefix: string;
@@ -33,7 +34,18 @@ export interface Subtask {
   position: number;
 }
 
+export interface WorkState {
+ agent: string; sessionId: string; heartbeatAt?: string; summary: string;
+ stale: boolean; completionUrl?: string; completedAt?: string; conflict?: string;
+}
+export interface SyncStatus { lastError?: string; pendingJobs: number; failedJobs: number; lastSyncAt?: string; githubConfigured?: boolean; }
+export type TicketUpdate = Partial<Ticket> & { expectedRevision?: number };
 export interface Ticket {
+ repeatRule?: string;
+ repeatAnchor?: number;
+ repeatSourceId?: string;
+ revision: number;
+ work?: WorkState;
   id: string;
   projectId: string;
   teamId?: string;
@@ -88,6 +100,8 @@ function buildQuery(params: any): string {
   return "?" + entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
 }
 
+export class ApiError extends Error { status: number; constructor(message:string,status:number){super(message);this.status=status;} }
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -95,13 +109,42 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+    let message = text;
+    try { message = JSON.parse(text).error || text; } catch { /* Plain text response. */ }
+    throw new ApiError(message || "Something went wrong. Please try again.",res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
+export interface SavedBackup { id:string; createdAt:string; bytes:number; reason:string }
+export interface RecoveryStatus { backups:SavedBackup[]; lastError?:string; directory:string }
+export interface RecoveryPreview { id:string; boards:string[]; tasks:number }
+export interface DeletedTask {id:string;title:string;board:string;deletedAt:string;revision:number;linked:boolean}
+export interface ConnectionSetup {name:string;shell:string;platform:string;codex:string;claude:string;config:{mcpServers:Record<string,{command:string;args:string[]}>}}
+export interface ConnectionPilot {id:string;projectId:string;task:Ticket;reported:boolean;state:"waiting"|"working"|"needs_review"|"completed";prompt:string}
 export const api = {
+ connection: {
+  setup:()=>request<ConnectionSetup>('/api/connections/setup'),
+  create:(requestId:string,goal:string)=>request<ConnectionPilot>('/api/connections/pilots',{method:'POST',body:JSON.stringify({requestId,goal})}),
+  pilot:(id:string)=>request<ConnectionPilot>(`/api/connections/pilots/${encodeURIComponent(id)}`),
+ },
+ recovery: {
+  cancelPreview:(id:string)=>request<void>(`/api/recovery/previews/${id}`,{method:'DELETE'}),
+  status:()=>request<RecoveryStatus>('/api/recovery'),
+  create:()=>request<SavedBackup>('/api/recovery/backups',{method:'POST'}),
+  preview:(file:File)=>request<RecoveryPreview>('/api/recovery/preview',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file}),
+  previewSaved:(id:string)=>request<RecoveryPreview>(`/api/recovery/backups/${encodeURIComponent(id)}/preview`,{method:'POST'}),
+  restore:(id:string)=>request<{projectIds:string[]}>('/api/recovery/restore',{method:'POST',body:JSON.stringify({id,confirm:true})}),
+  trash:()=>request<DeletedTask[]>('/api/trash'),
+  undo:(id:string,revision:number)=>request<Ticket>(`/api/trash/${id}/restore`,{method:'POST',body:JSON.stringify({revision})}),
+ },
+ connections: () => request<{mcpServers:Record<string,{command:string;args:string[]}>}>("/api/connections"),
+ welcome: { create: (data: {requestId:string;name:string;goal:string;completionPolicy:"manual"|"verified";tasks:{title:string;description:string}[]}) => request<Project>("/api/welcome", {method:"POST",body:JSON.stringify(data)}) },
+ sync: {
+  status: () => request<SyncStatus>("/api/sync/status"),
+  retry: () => request("/api/sync/retry", {method:"POST"}),
+ },
   projects: {
     list: () => request<Project[]>("/api/projects"),
     listPaginated: (params: PaginationParams & { status?: string }) =>
@@ -141,6 +184,8 @@ export const api = {
   },
 
   tickets: {
+    complete: (id: string, evidence: string, expectedRevision?: number) => request<Ticket>(`/api/tickets/${id}/complete`, {method:"POST",body:JSON.stringify({evidence,expectedRevision})}),
+    resolve: (id: string, choice: "local" | "remote") => request(`/api/tickets/${id}/resolve`, {method:"POST",body:JSON.stringify({choice})}),
     list: () => request<Ticket[]>("/api/tickets"),
     listPaginated: (params: PaginationParams & { projectId?: string; status?: string; priority?: string }) =>
       request<PaginatedResult<Ticket>>(`/api/tickets${buildQuery(params)}`),
@@ -150,17 +195,19 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Ticket>) =>
+    update: (id: string, data: TicketUpdate) =>
       request<Ticket>(`/api/tickets/${id}`, {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    delete: (id: string) =>
-      request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
-    move: (id: string, status: string, position?: number) =>
+    delete: async (id: string, revision?: number) => {
+      await request<void>(`/api/tickets/${id}${revision===undefined?'':`?revision=${revision}`}`, { method: "DELETE" });
+      if(revision!==undefined) window.dispatchEvent(new CustomEvent('player2:deleted',{detail:{id,revision:revision+1}}));
+    },
+    move: (id: string, status: string, position?: number, expectedRevision?: number) =>
       request<Ticket>(`/api/tickets/${id}/move`, {
         method: "POST",
-        body: JSON.stringify({ status, position }),
+        body: JSON.stringify({ status, position, expectedRevision }),
       }),
     addSubtask: (id: string, title: string) =>
       request<Subtask>(`/api/tickets/${id}/subtasks`, {

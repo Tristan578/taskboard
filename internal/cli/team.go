@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/spf13/cobra"
 )
 
 func teamCommands() *cobra.Command {
@@ -19,6 +19,8 @@ func teamCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			teams, _, err := store.ListTeams()
 			if err != nil {
 				return err
@@ -44,6 +46,8 @@ func teamCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			t, err := store.CreateTeam(models.CreateTeamRequest{
 				Name:  args[0],
 				Color: color,
@@ -66,6 +70,8 @@ func teamCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			if err := store.DeleteTeam(args[0]); err != nil {
 				return err
 			}

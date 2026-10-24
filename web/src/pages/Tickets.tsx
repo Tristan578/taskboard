@@ -9,11 +9,12 @@ import {
   Calendar,
   Ticket as TicketIcon,
 } from "lucide-react";
-import { api, type Ticket, type Project, type Team } from "../api/client";
+import { api, type TicketUpdate, type Ticket, type Project, type Team } from "../api/client";
 import TicketPanel from "../components/TicketPanel";
+import { displayDue } from "../lib/focus";
 import CreateTicketModal from "../components/CreateTicketModal";
 
-const STATUSES = ["todo", "in_progress", "done"];
+const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 const PRIORITIES = ["urgent", "high", "medium", "low"];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -25,7 +26,7 @@ const STATUS_STYLES: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   todo: "Todo",
   in_progress: "In Progress",
-  done: "Done",
+  review: "Review", blocked: "Blocked", done: "Done",
 };
 
 const PRIORITY_CONFIG: Record<string, { style: string; icon: typeof ArrowUp }> = {
@@ -115,13 +116,15 @@ export default function Tickets() {
     load();
   };
 
-  const handleUpdate = async (id: string, data: Partial<Ticket>) => {
-    await api.tickets.update(id, data);
-    load();
+  const handleUpdate = async (id: string, data: TicketUpdate) => {
+    const updated = await api.tickets.update(id, data);
+    setSelectedTicket(updated);
+    void load();
+    return updated;
   };
 
-  const handleDelete = async (id: string) => {
-    await api.tickets.delete(id);
+  const handleDelete = async (id: string, revision?: number) => {
+    await api.tickets.delete(id,revision);
     load();
   };
 
@@ -229,7 +232,7 @@ export default function Tickets() {
                     {ticket.dueDate ? (
                       <span className="inline-flex items-center gap-1 text-xs text-slate-500">
                         <Calendar className="w-3 h-3" />
-                        {new Date(ticket.dueDate).toLocaleDateString()}
+                        {displayDue(ticket.dueDate)}
                       </span>
                     ) : (
                       <span className="text-xs text-slate-700">—</span>
