@@ -39,6 +39,7 @@ func (s *Server) savedBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", `attachment; filename="player2-backup.db"`)
 	w.Header().Set("Content-Type", "application/octet-stream")
+	// #nosec G703 -- BackupPath accepts only a ULID plus an allowed backup suffix, in the private backup directory; it rejects symlinks and non-regular files.
 	http.ServeFile(w, r, path)
 }
 func (s *Server) previewBackup(w http.ResponseWriter, r *http.Request) {

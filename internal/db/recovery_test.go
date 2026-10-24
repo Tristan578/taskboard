@@ -11,7 +11,7 @@ import (
 )
 
 func TestPreviousBackupVersionMigratesOnlyTheStagingCopy(t *testing.T) {
-	filename := filepath.Join(t.TempDir(), "previous.db")
+	filename := filepath.Join(t.TempDir(), "Previous backup #1 & notes.db")
 	database, err := sql.Open("sqlite", filename)
 	if err != nil {
 		t.Fatal(err)

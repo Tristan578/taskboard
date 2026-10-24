@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -29,7 +30,17 @@ type RecoveryPreview struct {
 // triggers or views supplied by an uploaded file are executed during migration.
 // The caller owns an isolated staging copy, never the live database.
 func ReadBackup(filename string) (*RecoverySnapshot, error) {
-	u := url.URL{Scheme: "file", Path: filename}
+	absolute, err := filepath.Abs(filename)
+	if err != nil {
+		return nil, err
+	}
+	uriPath := filepath.ToSlash(absolute)
+	// SQLite file URIs require forward slashes and / before a Windows drive
+	// letter. Escape the path separately so # and ? cannot become URI options.
+	if len(uriPath) >= 2 && uriPath[1] == ':' {
+		uriPath = "/" + uriPath
+	}
+	u := url.URL{Scheme: "file", Path: uriPath}
 	raw, err := sql.Open("sqlite", u.String()+"?mode=ro&_pragma=trusted_schema(0)&_pragma=query_only(1)")
 	if err != nil {
 		return nil, err
