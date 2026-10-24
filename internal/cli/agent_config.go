@@ -60,6 +60,7 @@ func agentConfigCommands() *cobra.Command {
 		Long: `Install Player2 Kanban workflow instructions for a specific AI agent IDE.
 
 Supported agents:
+  devin        → .devin/player2.md (workspace instructions)
   cursor       → .cursor/rules/player2.mdc
   claude       → CLAUDE.md
   gemini       → .gemini/GEMINI.md
@@ -131,6 +132,7 @@ func installAgentConfig(name string, target agentTarget, baseContent []byte) err
 		}
 		output = append(output, block...)
 	}
+	// #nosec G703 -- target.path is a fixed path from agentTargets, never the CLI argument; unknown agent keys are rejected.
 	if err := os.WriteFile(target.path, output, 0600); err != nil {
 		return fmt.Errorf("writing %s config: %w", name, err)
 	}
