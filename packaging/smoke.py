@@ -4,18 +4,25 @@ Only matching architectures execute; other targets remain package-build checks.
 All board content and credentials are isolated test data.
 """
 import json
+import argparse
 import os
 import pathlib
 import platform
 import socket
 import subprocess
-import sys
 import tempfile
 import time
+import uuid
 import urllib.error
 import urllib.request
 
-target, arch = sys.argv[1:]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("target")
+parser.add_argument("arch")
+parser.add_argument("--binary", type=pathlib.Path, help="Test a supplied local build without installing a package; CI omits this option.")
+options = parser.parse_args()
+target, arch = options.target, options.arch
+binary_kind = "supplied" if options.binary else "installed"
 native = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(platform.machine().lower())
 if native != arch:
     print(f"Built {target}/{arch}; native execution requires a matching runner (this runner is {native}).")
@@ -28,7 +35,10 @@ def run(*args, env=None):
 with tempfile.TemporaryDirectory(prefix="player2-installed-smoke-") as tmp:
     temp = pathlib.Path(tmp)
     env = dict(os.environ, XDG_CONFIG_HOME=str(temp / "config"), APPDATA=str(temp / "config"), GITHUB_TOKEN="")
-    if target == "windows":
+    if options.binary:
+        binary = options.binary.resolve(strict=True)
+        print("Testing a supplied local binary. Native installation is NOT tested in this mode.")
+    elif target == "windows":
         install = temp / "installed"
         run(root / f"desktop/Player2-Setup-windows-{arch}.exe", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/DIR={install}", env=env)
         binary = install / "player2-kanban.exe"
@@ -79,9 +89,40 @@ with tempfile.TemporaryDirectory(prefix="player2-installed-smoke-") as tmp:
         first = api("/api/recovery/restore", "POST", {"id": preview["id"], "confirm": True})
         assert api("/api/recovery/restore", "POST", {"id": preview["id"], "confirm": True}) == first
         assert len(api("/api/projects")) == 2
+        # Drive the real installed stdio server, rather than pretending a chat
+        # response or a copied setup command proves that an agent connected.
+        pilot_id = "connect-" + str(uuid.uuid4())
+        pilot = api("/api/connections/pilots", "POST", {"requestId": pilot_id, "goal": "Prepare a short weekly plan"})
+        again = api("/api/connections/pilots", "POST", {"requestId": pilot_id, "goal": "Prepare a short weekly plan"})
+        assert again["task"]["id"] == pilot["task"]["id"] and not pilot["reported"]
+        plan = api("/api/connections/setup")
+        configured = plan["config"]["mcpServers"][plan["name"]]
+        def mcp(name, arguments):
+            messages = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "installer-test", "version": "1"}}},
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": name, "arguments": arguments}},
+            ]
+            response = subprocess.run([configured["command"], *configured["args"]], input="".join(json.dumps(m) + "\n" for m in messages), capture_output=True, text=True, env=env, check=True, timeout=20)
+            parsed = [json.loads(line) for line in response.stdout.splitlines()]
+            result = next(item for item in parsed if item.get("id") == 2)
+            assert "error" not in result and not result["result"].get("isError"), result
+            return json.loads(result["result"]["content"][0]["text"])
+        task_id = pilot["task"]["id"]
+        current = mcp("get_ticket", {"id": task_id})
+        mcp("report_activity", {"id": task_id, "agent": "Automated protocol test", "sessionId": pilot_id, "summary": "Planning"})
+        assert api(f"/api/connections/pilots/{pilot_id}")["reported"]
+        current = mcp("move_ticket", {"id": task_id, "status": "in_progress", "expectedRevision": current["revision"]})
+        current = mcp("update_ticket", {"id": task_id, "description": "Prepare a short weekly plan\n1. List commitments\n2. Choose three priorities\n3. Reserve time", "expectedRevision": current["revision"]})
+        mcp("report_activity", {"id": task_id, "agent": "Automated protocol test", "sessionId": pilot_id, "summary": "Plan saved for review"})
+        current = mcp("move_ticket", {"id": task_id, "status": "review", "expectedRevision": current["revision"]})
+        assert api(f"/api/connections/pilots/{pilot_id}")["state"] == "needs_review"
+        api(f"/api/tickets/{task_id}/move", "POST", {"status": "done", "expectedRevision": current["revision"]})
+        assert api(f"/api/connections/pilots/{pilot_id}")["state"] == "completed"
+        print(f"PASS: guided first-task creation/retry, {binary_kind} stdio MCP reports and result, HTTP review completion. This is protocol automation, not a human or vendor-agent pilot.")
         with urllib.request.urlopen(base + "/recovery", timeout=10) as response:
             assert response.status == 200 and "script-src 'self'" in response.headers["Content-Security-Policy"]
-        print("PASS: installed app open/reuse, matching database discovery, mismatch refusal, recurrence, delete/undo, backup/restore, retry, embedded UI.")
+        print(f"PASS: {binary_kind} app open/reuse, matching database discovery, mismatch refusal, recurrence, delete/undo, backup/restore, retry, embedded UI.")
     finally:
         subprocess.run([str(binary), "--db", str(database), "stop"], env=env, capture_output=True, timeout=15)
         for _ in range(50):
@@ -91,7 +132,7 @@ with tempfile.TemporaryDirectory(prefix="player2-installed-smoke-") as tmp:
                 break
             time.sleep(.1)
     assert database.exists(), "Stopping removed user data"
-    if target == "windows":
+    if target == "windows" and not options.binary:
         run(install / "unins000.exe", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", env=env)
         assert database.exists(), "Uninstall removed boards"
         print("PASS: Windows uninstall preserves boards.")

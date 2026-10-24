@@ -121,7 +121,14 @@ export interface SavedBackup { id:string; createdAt:string; bytes:number; reason
 export interface RecoveryStatus { backups:SavedBackup[]; lastError?:string; directory:string }
 export interface RecoveryPreview { id:string; boards:string[]; tasks:number }
 export interface DeletedTask {id:string;title:string;board:string;deletedAt:string;revision:number;linked:boolean}
+export interface ConnectionSetup {name:string;shell:string;platform:string;codex:string;claude:string;config:{mcpServers:Record<string,{command:string;args:string[]}>}}
+export interface ConnectionPilot {id:string;projectId:string;task:Ticket;reported:boolean;state:"waiting"|"working"|"needs_review"|"completed";prompt:string}
 export const api = {
+ connection: {
+  setup:()=>request<ConnectionSetup>('/api/connections/setup'),
+  create:(requestId:string,goal:string)=>request<ConnectionPilot>('/api/connections/pilots',{method:'POST',body:JSON.stringify({requestId,goal})}),
+  pilot:(id:string)=>request<ConnectionPilot>(`/api/connections/pilots/${encodeURIComponent(id)}`),
+ },
  recovery: {
   cancelPreview:(id:string)=>request<void>(`/api/recovery/previews/${id}`,{method:'DELETE'}),
   status:()=>request<RecoveryStatus>('/api/recovery'),

@@ -2,15 +2,17 @@ import { useState } from "react";
 export default function CopyText({
   text,
   label = "Copy instructions",
+  copiedMessage = "Copied. Paste this into your AI chat.",
 }: {
   text: string;
   label?: string;
+  copiedMessage?: string;
 }) {
   const [message, setMessage] = useState("");
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
-      setMessage("Copied. Paste this into your AI chat.");
+      setMessage(copiedMessage);
     } catch {
       setMessage(
         "Copy is unavailable here. Select the text below and copy it yourself.",

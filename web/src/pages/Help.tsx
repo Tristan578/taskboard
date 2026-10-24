@@ -51,6 +51,7 @@ export default function Help() {
       <Link to="/welcome" className="easy-button">
         Start a new board
       </Link>
+      <Link to="/connect" className="easy-secondary">Connect an agent and try a first task</Link>
       <section className="border-t border-slate-800 pt-6 space-y-3">
         <h2 className="text-xl font-semibold">Use the AI you already have</h2>
         <p className="text-slate-300">

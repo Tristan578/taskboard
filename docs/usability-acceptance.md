@@ -3,6 +3,9 @@
 Status: **not yet observed with participants**. Automated component and installed
 package checks do not establish that first-time users understand the product.
 
+For guided connection, use [the first-user pilot script](first-user-pilot.md).
+The implemented contract is in [agent connection](agent-connection.md).
+
 Use a fresh OS account and synthetic tasks. Ask the participant to think aloud;
 do not explain the interface unless they cannot continue. Record where assistance
 was needed and the participant's exact wording, without recording private tasks.

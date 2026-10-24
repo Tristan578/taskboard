@@ -19,6 +19,7 @@ const items = [
   { to: "/board", icon: LayoutDashboard, label: "My board" },
   { to: "/welcome", icon: Plus, label: "New board" },
   { to: "/projects", icon: FolderKanban, label: "Boards" },
+  { to: "/connect", icon: Sparkles, label: "Connect my AI" },
  {to:"/recovery",icon:CircleHelp,label:"Backups & recovery"},
   { to: "/help", icon: CircleHelp, label: "Help & connections" },
 ];

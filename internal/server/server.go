@@ -117,6 +117,9 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 		r.Get("/trash", s.listTrash)
 		r.Post("/trash/{id}/restore", s.restoreTask)
 		r.Get("/connections", s.connectionSettings)
+		r.Get("/connections/setup", s.connectionSetup)
+		r.Post("/connections/pilots", s.createConnectionPilot)
+		r.Get("/connections/pilots/{id}", s.connectionPilot)
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", s.listProjects)
 			r.Post("/", s.createProject)

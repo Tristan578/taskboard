@@ -61,7 +61,27 @@ Completion policies cannot be silently switched on an existing board.
 
 Copy/paste uses your existing chat service. Nothing is automatically sent to an AI
 provider and your chat does not automatically update Player2. Agent automation is
-an optional separate connection under **Help & connections → Advanced**.
+an optional separate connection under **Connect my AI**.
+
+## Connect a local agent and try a first task
+
+1. Choose **Connect my AI**, then your local app: Codex CLI, Claude Code, or another
+   MCP-capable app. A web or phone chat can use the separate manual path.
+2. Read the access explanation. The agent can read and edit all boards in this
+   database, and task content may reach its AI provider. Linked tasks may sync to GitHub.
+3. With the agent installed and signed in, copy the setup command into the indicated
+   terminal, or add the configuration entry to the app's existing MCP settings.
+   Keep other connections. Reopen the agent session and enable Player2's tools.
+4. Enter a small, low-sensitivity goal. Player2 creates a planning task and provides
+   instructions to paste into your agent. Nothing executes until you send them.
+5. Watch the actual report and result arrive here. Review the result before marking
+   the everyday task Done. You can close and return to the check; the task stays saved.
+
+Copying settings alone does not mean the agent connected. If it cannot find the
+task, check that it uses this installation's settings rather than creating a task
+elsewhere. The page includes troubleshooting and labels old activity. To disconnect,
+disable or remove this database's named Player2 connection in your agent's MCP settings.
+The planning check does not bypass verified completion on software boards.
 
 ## Keep your work safe
 

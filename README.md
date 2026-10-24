@@ -20,6 +20,8 @@ copy/paste, then add agent automation when you need it.
   verified merge/deployment evidence.
 - Optional CLI/MCP agents, heartbeats, stale-work detection, and conflict-aware
   GitHub issue synchronization.
+- **Connect my AI** guides local setup and verifies an agent report and saved
+  result through a useful first task, with an explicit manual path for chat users.
 - Local storage, daily automatic backups, previewed recovery and deleted-task Undo.
 - Daily, weekly and monthly repeats that create one next task after completion.
 - A **Next up** page for overdue work, reviews, and tasks that need help, with
