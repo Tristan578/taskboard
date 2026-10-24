@@ -72,9 +72,10 @@ export default function Help() {
           appear on your phone or another computer.
         </p>
         <p className="text-slate-300">
-          Download a backup somewhere you trust. It includes your task content,
+          Automatic backups are saved daily while Player2 runs. Use Backups & recovery to restore a backup or recover deleted tasks. Download a backup somewhere you trust. It includes your task content,
           so keep it private.
         </p>
+        <Link to="/recovery" className="easy-secondary">Backups & recovery</Link>
         <a
           className="easy-secondary"
           href="/api/backup"

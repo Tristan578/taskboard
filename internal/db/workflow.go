@@ -145,6 +145,11 @@ func (s *Store) CompleteVerified(id, url string, expected ...int) (*models.Ticke
 	} else if n != 1 {
 		return nil, &ConflictError{}
 	}
+	if t.Status != "done" {
+		if err = createNextOccurrence(tx, t, time.Now()); err != nil {
+			return nil, err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}

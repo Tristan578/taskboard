@@ -76,15 +76,49 @@ you first. Drafts in an open editor are not a backup; save your work before quit
 External images in notes appear as links so opening a task does not contact the
 image host automatically.
 
-Boards live on this computer, not in the browser cache. Closing the browser leaves
-them intact. There is no automatic cloud backup or phone sync. Use **Help &
-connections → Download backup** to save a consistent database snapshot somewhere
-you trust. A backup contains private task data.
+Boards live on this computer, not in browser cache. **Backups & recovery** saves a
+backup once a day while the Player2 browser service runs and keeps the latest 14
+copies. **Back up now** creates an immediate copy. Failures are shown on that page;
+check them after running out of disk space. Download a backup to a trusted external
+location for protection against computer loss or disk failure. Backups contain
+private task data and are not encrypted or sent to a cloud service.
 
-To restore: stop Player2, retain a copy of the current database, and replace it with
-a trusted backup at the path shown by `player2-kanban status`. If restoring after an
-unclean shutdown, have a technical person handle SQLite WAL/SHM sidecars rather
-than mixing a backup with stale sidecar files. Reopen Player2.
+To recover, choose **Preview restore** beside a saved copy, or select a downloaded
+Player2 `.db` backup up to 32 MB. Review its boards and task count, then confirm.
+Player2 saves a safety backup and creates separate boards named “(restored)”. Your
+current work stays in place. Repeating the same request after a lost response
+returns the same restored boards. Cancel frees the preview; unused previews expire
+after an hour. Older supported Player2 backups are upgraded in an isolated copy.
+
+Recovered boards contain nondeleted tasks, notes, teams, labels, checklists and
+available dependencies. In-progress tasks return to Todo, software Done returns to
+Review, and GitHub links and active agent sessions are not reactivated. Review the
+copies before reconnecting a software board. Unexpected schemas, damaged files and
+broken references are rejected before any restored board is created.
+
+To undo a task deletion, choose **Undo** in the notification or **Restore task** in
+**Backups & recovery → Deleted tasks**. Notes and checklists are retained. If GitHub
+is syncing, try again once it finishes; review any resulting sync conflict. The
+page shows the most recent 200 deleted tasks. Deleting an entire board is not task
+Undo; recover a prior backup if you need that board again.
+
+## Repeat useful work
+
+Set a task's due date and choose **Daily**, **Weekly** or **Monthly** under **Repeats**.
+Completing it creates one next occurrence in Todo, copying the task text, team,
+priority, labels and a fresh checklist. The old task remains in Done. Software
+boards still require verified completion. Agent assignments, evidence and dependency
+links are not copied into the next occurrence.
+
+Dates follow the scheduled calendar cadence. Late completion skips missed dates
+and produces one future occurrence. Monthly work keeps its original day where
+possible: January 31 becomes February's last day, then March 31. Reopening and
+completing an old occurrence does not create another duplicate. To stop a series,
+choose **Does not repeat** on the newest occurrence. Repeats are completion-driven;
+they do not send notifications or create tasks while the current one is unfinished.
+
+Developers can also use `ticket create --due YYYY-MM-DD --repeat weekly` or the
+`repeatRule` field through HTTP/MCP. The browser retains the simplest setup path.
 
 ## Connect a coding agent
 

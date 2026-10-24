@@ -330,7 +330,7 @@ func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, e
 	query := `SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
-		t.is_draft, t.created_at, t.updated_at, t.revision, COALESCE(p.prefix, '') as project_prefix
+		t.is_draft, t.created_at, t.updated_at, t.revision, t.repeat_rule, t.repeat_anchor, t.repeat_source_id, COALESCE(p.prefix, '') as project_prefix
 		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id` + whereClause +
 		" ORDER BY t.lexo_rank ASC, t.created_at DESC"
 
@@ -355,7 +355,7 @@ func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, e
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.TeamID, &t.Number, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 			&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
-			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.ProjectPrefix); err != nil {
+			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.RepeatRule, &t.RepeatAnchor, &t.RepeatSourceID, &t.ProjectPrefix); err != nil {
 			return nil, 0, err
 		}
 		tickets = append(tickets, t)
@@ -395,12 +395,12 @@ func (s *Store) GetTicket(id string) (*models.Ticket, error) {
 		`SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
-		t.is_draft, t.created_at, t.updated_at, t.revision, COALESCE(p.prefix, '') as project_prefix
+		t.is_draft, t.created_at, t.updated_at, t.revision, t.repeat_rule, t.repeat_anchor, t.repeat_source_id, COALESCE(p.prefix, '') as project_prefix
 		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ? AND t.deleted_at IS NULL`, id,
 	).Scan(&t.ID, &t.ProjectID, &t.TeamID, &t.Number, &t.Title, &t.Description,
 		&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 		&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
-		&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.ProjectPrefix)
+		&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.RepeatRule, &t.RepeatAnchor, &t.RepeatSourceID, &t.ProjectPrefix)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -469,10 +469,18 @@ func (s *Store) CreateTicket(req models.CreateTicketRequest) (*models.Ticket, er
 		}
 	}
 
+	t.RepeatRule = req.RepeatRule
+	if t.RepeatRule != "" && t.Status == "done" {
+		return nil, invalid("create a repeating task before marking it done")
+	}
+	if err := prepareRepeat(&t, true); err != nil {
+		return nil, err
+	}
+
 	_, err = s.db.Exec(
-		`INSERT INTO tickets (id, project_id, team_id, number, title, description, status, priority, due_date, position, lexo_rank, user_story, acceptance_criteria, technical_details, testing_details, is_draft, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.ProjectID, t.TeamID, t.Number, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.CreatedAt, t.UpdatedAt,
+		`INSERT INTO tickets (id, project_id, team_id, number, title, description, status, priority, due_date, position, lexo_rank, user_story, acceptance_criteria, technical_details, testing_details, is_draft, repeat_rule, repeat_anchor, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.ProjectID, t.TeamID, t.Number, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.RepeatRule, t.RepeatAnchor, t.CreatedAt, t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -503,6 +511,11 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 		return nil, &ConflictError{}
 	}
 	previousStatus := t.Status
+	oldRepeatRule := t.RepeatRule
+	oldDueDate := ""
+	if t.DueDate != nil {
+		oldDueDate = t.DueDate.Format("2006-01-02")
+	}
 	if req.Title != nil {
 		t.Title = *req.Title
 	}
@@ -560,6 +573,12 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 			t.DueDate = &parsed
 		}
 	}
+	if req.RepeatRule != nil {
+		t.RepeatRule = *req.RepeatRule
+	}
+	if err := prepareRepeat(t, (req.RepeatRule != nil && *req.RepeatRule != oldRepeatRule) || (req.DueDate != nil && *req.DueDate != oldDueDate)); err != nil {
+		return nil, err
+	}
 	if err := s.validateTicket(t, previousStatus); err != nil {
 		return nil, err
 	}
@@ -571,8 +590,8 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 	}
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.Exec(
-		`UPDATE tickets SET team_id=?, title=?, description=?, status=?, priority=?, due_date=?, position=?, lexo_rank=?, github_issue_number=?, github_last_synced_sha=?, user_story=?, acceptance_criteria=?, technical_details=?, testing_details=?, is_draft=?, updated_at=?, revision=revision+1 WHERE id=? AND revision=? AND deleted_at IS NULL`,
-		t.TeamID, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.GitHubIssueNumber, t.GitHubLastSyncedSHA, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.UpdatedAt, t.ID, t.Revision,
+		`UPDATE tickets SET team_id=?, title=?, description=?, status=?, priority=?, due_date=?, position=?, lexo_rank=?, github_issue_number=?, github_last_synced_sha=?, user_story=?, acceptance_criteria=?, technical_details=?, testing_details=?, is_draft=?, repeat_rule=?, repeat_anchor=?, updated_at=?, revision=revision+1 WHERE id=? AND revision=? AND deleted_at IS NULL`,
+		t.TeamID, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.GitHubIssueNumber, t.GitHubLastSyncedSHA, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.RepeatRule, t.RepeatAnchor, t.UpdatedAt, t.ID, t.Revision,
 	)
 	if err != nil {
 		return nil, err
@@ -606,6 +625,11 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 		}
 	}
 
+	if t.Status == "done" && previousStatus != "done" {
+		if err = createNextOccurrence(tx, t, time.Now()); err != nil {
+			return nil, err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -653,7 +677,7 @@ func (s *Store) ListDeletedTickets(projectID string) ([]models.Ticket, error) {
 	query := `SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
-		t.is_draft, t.created_at, t.updated_at, t.revision, COALESCE(p.prefix, '') as project_prefix
+		t.is_draft, t.created_at, t.updated_at, t.revision, t.repeat_rule, t.repeat_anchor, t.repeat_source_id, COALESCE(p.prefix, '') as project_prefix
 		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id 
 		WHERE t.project_id = ? AND t.deleted_at IS NOT NULL`
 
@@ -669,7 +693,7 @@ func (s *Store) ListDeletedTickets(projectID string) ([]models.Ticket, error) {
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.TeamID, &t.Number, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 			&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
-			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.ProjectPrefix); err != nil {
+			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.RepeatRule, &t.RepeatAnchor, &t.RepeatSourceID, &t.ProjectPrefix); err != nil {
 			return nil, err
 		}
 		tickets = append(tickets, t)

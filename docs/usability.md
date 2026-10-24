@@ -30,7 +30,10 @@ are removed from the README entry path because they are not evidence of the new 
   optional. Failure messages keep the current input available.
 - Existing boards retain verified completion. New everyday boards allow explicit
   completion without GitHub and cannot be linked to GitHub or silently converted.
-- A consistent SQLite backup and installation-specific MCP settings are downloadable.
+- Consistent SQLite backups and installation-specific MCP settings are downloadable.
+  Daily automatic backups, reviewed restoration into separate boards and deleted-task
+  Undo are available under Backups & recovery. Completion-driven daily/weekly/monthly
+  tasks preserve monthly anchors and avoid duplicate occurrences.
 - Windows per-user installer, macOS app/package, Debian package and Linux local
   launcher are built alongside the npm binaries.
 - Next up brings overdue tasks, reviews, blockers and stale agent activity into
@@ -58,14 +61,24 @@ Additional tests exercise stale edits through storage, HTTP and MCP, atomic
 rollback, date/team clearing, conflict comparison, unsaved-close warnings,
 deletion failure, task ordering, Markdown links and browser request boundaries.
 
-## Recommended next validation
+## Completion and release evidence
 
-Prioritize automatic local backups with an approachable restore flow and undo for
-deletion, then recurring tasks for repeat household/business work. These are not
-implemented in this pass. Before expanding into shared boards or paid hosting,
-watch several nontechnical people install Player2 and finish one real task without
-coaching. Measure where they stop, whether they return, and whether they understand
-what is saved locally versus sent to their AI provider.
+Automatic backups, guided recovery, deletion Undo and recurring tasks are implemented.
+Recovery checks cover supported old backups, schema validation, transactional rollback,
+retry idempotency, staging limits, expiration, retention, and failed backup visibility.
+Recurrence checks cover month ends, leap years, late completion, repeated completion,
+and rollback when the next occurrence cannot be saved.
+
+The package workflow now installs and exercises matching native binaries on disposable
+runners. Other architectures remain package-build checks. A separate CI job imports
+issues through GitHub's actual API using read-only permissions and a transport guard
+that rejects mutations. Record current-commit results in the PR. Real two-way writes
+in a disposable repository are a separate validation, not covered by that live read.
+
+`release-test-matrix.json` and `launch-assessment.json` keep release gates explicit.
+`usability-acceptance.md` provides the device/participant protocol; it is not a claim
+that people have completed it. Cloud Browser returned ERR_CONNECTION_REFUSED when
+opening the running local app, so visual inspection remains unavailable here.
 
 No autonomous app builder, provider subscription bridge, hosted multi-device sync,
 or universal agent connector is claimed. A first-app template is a guided project,

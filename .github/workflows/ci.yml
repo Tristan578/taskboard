@@ -11,6 +11,22 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  live-github-read:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify live GitHub import without allowing writes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PLAYER2_LIVE_GITHUB_REPO: ${{ github.repository }}
+        run: go test ./internal/github -run '^TestLiveGitHubReadOnlyImport$' -v -count=1
+
   build-and-test:
     runs-on: ubuntu-latest
 
@@ -33,6 +49,7 @@ jobs:
 
       - name: Embed frontend
         run: |
+          rm -rf cmd/kanban/web/dist
           mkdir -p cmd/kanban/web/dist
           cp -r web/dist/* cmd/kanban/web/dist/
 

@@ -76,6 +76,7 @@ jobs:
 
       - name: Embed frontend in binary
         run: |
+          rm -rf cmd/kanban/web/dist
           mkdir -p cmd/kanban/web/dist
           cp -r web/dist/* cmd/kanban/web/dist/
 
@@ -99,6 +100,9 @@ jobs:
 
       - name: Build desktop installer
         run: python packaging/package.py "${{ matrix.goos }}" "${{ matrix.goarch }}"
+
+      - name: Install and verify native package on matching runners
+        run: python packaging/smoke.py "${{ matrix.goos }}" "${{ matrix.goarch }}"
 
       - uses: actions/upload-artifact@v4
         with:

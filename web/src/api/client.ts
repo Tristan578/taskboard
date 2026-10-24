@@ -41,6 +41,9 @@ export interface WorkState {
 export interface SyncStatus { lastError?: string; pendingJobs: number; failedJobs: number; lastSyncAt?: string; githubConfigured?: boolean; }
 export type TicketUpdate = Partial<Ticket> & { expectedRevision?: number };
 export interface Ticket {
+ repeatRule?: string;
+ repeatAnchor?: number;
+ repeatSourceId?: string;
  revision: number;
  work?: WorkState;
   id: string;
@@ -114,7 +117,21 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface SavedBackup { id:string; createdAt:string; bytes:number; reason:string }
+export interface RecoveryStatus { backups:SavedBackup[]; lastError?:string; directory:string }
+export interface RecoveryPreview { id:string; boards:string[]; tasks:number }
+export interface DeletedTask {id:string;title:string;board:string;deletedAt:string;revision:number;linked:boolean}
 export const api = {
+ recovery: {
+  cancelPreview:(id:string)=>request<void>(`/api/recovery/previews/${id}`,{method:'DELETE'}),
+  status:()=>request<RecoveryStatus>('/api/recovery'),
+  create:()=>request<SavedBackup>('/api/recovery/backups',{method:'POST'}),
+  preview:(file:File)=>request<RecoveryPreview>('/api/recovery/preview',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file}),
+  previewSaved:(id:string)=>request<RecoveryPreview>(`/api/recovery/backups/${encodeURIComponent(id)}/preview`,{method:'POST'}),
+  restore:(id:string)=>request<{projectIds:string[]}>('/api/recovery/restore',{method:'POST',body:JSON.stringify({id,confirm:true})}),
+  trash:()=>request<DeletedTask[]>('/api/trash'),
+  undo:(id:string,revision:number)=>request<Ticket>(`/api/trash/${id}/restore`,{method:'POST',body:JSON.stringify({revision})}),
+ },
  connections: () => request<{mcpServers:Record<string,{command:string;args:string[]}>}>("/api/connections"),
  welcome: { create: (data: {requestId:string;name:string;goal:string;completionPolicy:"manual"|"verified";tasks:{title:string;description:string}[]}) => request<Project>("/api/welcome", {method:"POST",body:JSON.stringify(data)}) },
  sync: {
@@ -176,8 +193,10 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    delete: (id: string, revision?: number) =>
-      request<void>(`/api/tickets/${id}${revision===undefined?'':`?revision=${revision}`}`, { method: "DELETE" }),
+    delete: async (id: string, revision?: number) => {
+      await request<void>(`/api/tickets/${id}${revision===undefined?'':`?revision=${revision}`}`, { method: "DELETE" });
+      if(revision!==undefined) window.dispatchEvent(new CustomEvent('player2:deleted',{detail:{id,revision:revision+1}}));
+    },
     move: (id: string, status: string, position?: number, expectedRevision?: number) =>
       request<Ticket>(`/api/tickets/${id}/move`, {
         method: "POST",

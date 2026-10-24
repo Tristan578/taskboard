@@ -43,6 +43,7 @@ export default function TicketPanel({
   const [description, setDescription] = useState(ticket.description || "");
   const [status, setStatus] = useState(ticket.status);
   const [priority, setPriority] = useState(ticket.priority);
+  const [repeatRule, setRepeatRule] = useState(ticket.repeatRule || "");
   const [dueDate, setDueDate] = useState(ticket.dueDate?.slice(0, 10) || "");
   const [teamId, setTeamId] = useState(ticket.teamId || "");
   const [userStory, setUserStory] = useState(ticket.userStory || "");
@@ -93,6 +94,7 @@ export default function TicketPanel({
         description,
         status,
         priority,
+        repeatRule,
         dueDate,
         teamId,
         userStory,
@@ -106,6 +108,7 @@ export default function TicketPanel({
       setDescription(updated.description || "");
       setStatus(updated.status);
       setPriority(updated.priority);
+      setRepeatRule(updated.repeatRule || "");
       setDueDate(updated.dueDate?.slice(0, 10) || "");
       setTeamId(updated.teamId || "");
       setUserStory(updated.userStory || "");
@@ -139,7 +142,7 @@ export default function TicketPanel({
   const handleDelete = async () => {
     if (
       !window.confirm(
-        "Delete this task? Its notes and checklist will no longer appear on the board.",
+        "Move this task to Deleted tasks? You can restore it from Backups & recovery.",
       )
     )
       return;
@@ -286,6 +289,7 @@ export default function TicketPanel({
                       ["Notes", latest.description],
                       ["Status", STATUS_LABELS[latest.status] || latest.status],
                       ["Priority", latest.priority],
+                      ["Repeats", latest.repeatRule || "Does not repeat"],
                       ["Due date", latest.dueDate?.slice(0, 10)],
                       [
                         "Team",
@@ -565,6 +569,30 @@ export default function TicketPanel({
             </div>
           </div>
 
+          <label className="block text-sm text-slate-300">
+            Repeats
+            <select
+              aria-label="Repeats"
+              className="easy-input"
+              value={repeatRule}
+              onChange={(e) => {
+                setRepeatRule(e.target.value);
+                markDirty();
+              }}
+            >
+              <option value="">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            {repeatRule && (
+              <span className="block mt-2 text-xs text-slate-400">
+                Choose a due date. Completing this task creates one next
+                occurrence with a fresh checklist. Missed dates are skipped;
+                stopping repeats on the newest task ends the series.
+              </span>
+            )}
+          </label>
           {dirty && (
             <button
               onClick={() => void handleSave()}

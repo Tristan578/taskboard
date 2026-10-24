@@ -15,6 +15,7 @@ import (
 	"github.com/Tristan578/taskboard/internal/db"
 	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/recovery"
 	"github.com/Tristan578/taskboard/internal/workflow"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -23,13 +24,14 @@ import (
 )
 
 type Server struct {
+	recovery  *recovery.Manager
 	store     *db.Store
 	router    chi.Router
 	startedAt time.Time
 }
 
 func New(store *db.Store, webFS fs.FS) *Server {
-	s := &Server{store: store, startedAt: time.Now()}
+	s := &Server{store: store, recovery: recovery.New(store), startedAt: time.Now()}
 	s.setupRoutes(webFS)
 	return s
 }
@@ -105,6 +107,15 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/welcome", s.createWorkspace)
 		r.Get("/backup", s.downloadBackup)
+		r.Get("/recovery", s.recoveryStatus)
+		r.Post("/recovery/backups", s.createBackup)
+		r.Get("/recovery/backups/{id}", s.savedBackup)
+		r.Post("/recovery/backups/{id}/preview", s.previewSavedBackup)
+		r.Post("/recovery/preview", s.previewBackup)
+		r.Delete("/recovery/previews/{id}", s.cancelPreview)
+		r.Post("/recovery/restore", s.restoreBackup)
+		r.Get("/trash", s.listTrash)
+		r.Post("/trash/{id}/restore", s.restoreTask)
 		r.Get("/connections", s.connectionSettings)
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", s.listProjects)

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -59,6 +60,9 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			}
 
 			srv := server.New(store, webFS)
+			maintenance, cancel := context.WithCancel(cmd.Context())
+			defer cancel()
+			srv.StartMaintenance(maintenance)
 			return srv.ListenAndServe(port)
 		},
 	}

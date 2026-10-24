@@ -117,6 +117,140 @@
       ],
       "migration": "Additive migration 010; keep historical Done with legacy evidence label",
       "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    },
+    {
+      "id": "P2-4",
+      "title": "Automatic backups and guided recovery",
+      "objective": "Automatic backups and guided recovery",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "A valid backup restores separate boards with notes and relationships; retries return the same copies."
+        },
+        {
+          "type": "negative",
+          "text": "Invalid schema, damaged file, failed safety backup or failed insert leaves current boards unchanged."
+        },
+        {
+          "type": "boundary",
+          "text": "Retain 14 backups, limit uploads to 32 MiB, expire previews after an hour."
+        }
+      ],
+      "test_plan": [
+        "internal/db/recovery_test.go",
+        "internal/recovery/manager_test.go",
+        "internal/server/recovery_test.go",
+        "web/src/pages/Recovery.test.tsx"
+      ],
+      "observability": [
+        "Recovery errors and backup timestamps appear in the UI",
+        "CI records installation and live API outcomes"
+      ],
+      "manual_steps": [
+        "Interactive installation and nontechnical user acceptance on actual devices"
+      ],
+      "agent_constraints": [
+        "Preserve user data; no direct main push or publication"
+      ],
+      "migration_data": [
+        "Migration 012 adds repeat fields and idempotent restore receipts; existing data is retained"
+      ],
+      "rollback": [
+        "Restoration creates separate boards; a pre-restore safety backup is required; do not downgrade a migrated database without retaining it."
+      ]
+    },
+    {
+      "id": "P2-5",
+      "title": "Deleted-task undo and repeating work",
+      "objective": "Deleted-task undo and repeating work",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Undo restores notes/checklists; completing daily, weekly or monthly work creates one next occurrence."
+        },
+        {
+          "type": "negative",
+          "text": "Stale Undo cannot restore a later deletion; failure creating the repeat rolls back completion."
+        },
+        {
+          "type": "boundary",
+          "text": "Reopening/completing does not duplicate work; month-end and leap-year anchors survive edits."
+        }
+      ],
+      "test_plan": [
+        "internal/db/recovery_test.go",
+        "web/src/components/TicketPanel.test.tsx"
+      ],
+      "observability": [
+        "Recovery errors and backup timestamps appear in the UI",
+        "CI records installation and live API outcomes"
+      ],
+      "manual_steps": [
+        "Interactive installation and nontechnical user acceptance on actual devices"
+      ],
+      "agent_constraints": [
+        "Preserve user data; no direct main push or publication"
+      ],
+      "migration_data": [
+        "Migration 012 adds repeat fields and idempotent restore receipts; existing data is retained"
+      ],
+      "rollback": [
+        "Restoration creates separate boards; a pre-restore safety backup is required; do not downgrade a migrated database without retaining it."
+      ]
+    },
+    {
+      "id": "P2-6",
+      "title": "Installed package and live API verification",
+      "objective": "Installed package and live API verification",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-4",
+        "P2-5"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Install native packages in disposable runners and exercise core workflows; authenticate a read-only live GitHub import."
+        },
+        {
+          "type": "negative",
+          "text": "Live test transport refuses mutations; failed checks block the branch release assessment."
+        },
+        {
+          "type": "boundary",
+          "text": "Mismatched runner architectures build only; interactive usability remains explicitly unverified."
+        }
+      ],
+      "test_plan": [
+        "packaging/smoke.py",
+        "internal/github/live_test.go",
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml"
+      ],
+      "observability": [
+        "Recovery errors and backup timestamps appear in the UI",
+        "CI records installation and live API outcomes"
+      ],
+      "manual_steps": [
+        "Interactive installation and nontechnical user acceptance on actual devices"
+      ],
+      "agent_constraints": [
+        "Preserve user data; no direct main push or publication"
+      ],
+      "migration_data": [
+        "Migration 012 adds repeat fields and idempotent restore receipts; existing data is retained"
+      ],
+      "rollback": [
+        "Restoration creates separate boards; a pre-restore safety backup is required; do not downgrade a migrated database without retaining it."
+      ]
     }
   ]
 }

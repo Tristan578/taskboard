@@ -551,7 +551,7 @@ func (s *MCPServer) toolDefinitions() []toolDef {
 				"If the project uses Strict Mode, non-draft tickets require userStory and acceptanceCriteria.",
 			InputSchema: jsonSchema{
 				Type: "object",
-				Properties: map[string]schemaProp{
+				Properties: map[string]schemaProp{"repeatRule": {Type: "string", Description: "Repeat after completion; requires a due date. Empty string stops future repeats on this occurrence.", Enum: []string{"", "daily", "weekly", "monthly"}},
 					"projectId":          {Type: "string", Description: "Project ID"},
 					"title":              {Type: "string", Description: "Ticket title"},
 					"description":        {Type: "string", Description: "Rich text description"},
@@ -573,7 +573,7 @@ func (s *MCPServer) toolDefinitions() []toolDef {
 			Description: "Update ticket properties. Use this to add userStory and acceptanceCriteria to satisfy Strict Mode requirements.",
 			InputSchema: jsonSchema{
 				Type: "object",
-				Properties: map[string]schemaProp{"expectedRevision": {Type: "integer", Description: "Revision from get_ticket; supply it to reject changes that would overwrite newer work"},
+				Properties: map[string]schemaProp{"repeatRule": {Type: "string", Description: "Repeat after completion; requires a due date. Empty string stops future repeats on this occurrence.", Enum: []string{"", "daily", "weekly", "monthly"}}, "expectedRevision": {Type: "integer", Description: "Revision from get_ticket; supply it to reject changes that would overwrite newer work"},
 					"id":                 {Type: "string", Description: "Ticket ID"},
 					"title":              {Type: "string", Description: "Ticket title"},
 					"description":        {Type: "string", Description: "Description"},

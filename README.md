@@ -20,7 +20,8 @@ copy/paste, then add agent automation when you need it.
   verified merge/deployment evidence.
 - Optional CLI/MCP agents, heartbeats, stale-work detection, and conflict-aware
   GitHub issue synchronization.
-- Local storage with downloadable database backups.
+- Local storage, daily automatic backups, previewed recovery and deleted-task Undo.
+- Daily, weekly and monthly repeats that create one next task after completion.
 - A **Next up** page for overdue work, reviews, and tasks that need help, with
   search across task titles and notes.
 - Conflict checks protect browser edits from overwriting newer agent work;

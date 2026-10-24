@@ -13,11 +13,13 @@ import {
   X,
 } from "lucide-react";
 import TerminalPanel from "./TerminalPanel";
+import UndoDelete from "./UndoDelete";
 const items = [
  {to:"/focus",icon:ListTodo,label:"Next up"},
   { to: "/board", icon: LayoutDashboard, label: "My board" },
   { to: "/welcome", icon: Plus, label: "New board" },
   { to: "/projects", icon: FolderKanban, label: "Boards" },
+ {to:"/recovery",icon:CircleHelp,label:"Backups & recovery"},
   { to: "/help", icon: CircleHelp, label: "Help & connections" },
 ];
 export default function Layout() {
@@ -95,6 +97,7 @@ export default function Layout() {
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-auto bg-slate-950">
           <Outlet />
+          <UndoDelete/>
         </main>
         <TerminalPanel
           isOpen={terminalOpen}

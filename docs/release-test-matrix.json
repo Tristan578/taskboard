@@ -1,0 +1,194 @@
+{
+  "capabilities": [
+    {
+      "id": "CAP-1",
+      "name": "functional",
+      "critical": true
+    },
+    {
+      "id": "CAP-2",
+      "name": "recovery",
+      "critical": true
+    },
+    {
+      "id": "CAP-3",
+      "name": "recurrence",
+      "critical": true
+    },
+    {
+      "id": "CAP-4",
+      "name": "browser-boundary",
+      "critical": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "CAP-1-1",
+      "capability_id": "CAP-1",
+      "type": "positive",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+    },
+    {
+      "id": "CAP-1-2",
+      "capability_id": "CAP-1",
+      "type": "negative",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+    },
+    {
+      "id": "CAP-1-3",
+      "capability_id": "CAP-1",
+      "type": "boundary",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+    },
+    {
+      "id": "CAP-1-4",
+      "capability_id": "CAP-1",
+      "type": "dependency-failure",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+    },
+    {
+      "id": "CAP-1-5",
+      "capability_id": "CAP-1",
+      "type": "observability",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+    },
+    {
+      "id": "CAP-1-6",
+      "capability_id": "CAP-1",
+      "type": "rollback",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+    },
+    {
+      "id": "CAP-2-1",
+      "capability_id": "CAP-2",
+      "type": "positive",
+      "automated": true,
+      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+    },
+    {
+      "id": "CAP-2-2",
+      "capability_id": "CAP-2",
+      "type": "negative",
+      "automated": true,
+      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+    },
+    {
+      "id": "CAP-2-3",
+      "capability_id": "CAP-2",
+      "type": "boundary",
+      "automated": true,
+      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+    },
+    {
+      "id": "CAP-2-4",
+      "capability_id": "CAP-2",
+      "type": "dependency-failure",
+      "automated": true,
+      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+    },
+    {
+      "id": "CAP-2-5",
+      "capability_id": "CAP-2",
+      "type": "observability",
+      "automated": true,
+      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+    },
+    {
+      "id": "CAP-2-6",
+      "capability_id": "CAP-2",
+      "type": "rollback",
+      "automated": true,
+      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+    },
+    {
+      "id": "CAP-3-1",
+      "capability_id": "CAP-3",
+      "type": "positive",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go"
+    },
+    {
+      "id": "CAP-3-2",
+      "capability_id": "CAP-3",
+      "type": "negative",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go"
+    },
+    {
+      "id": "CAP-3-3",
+      "capability_id": "CAP-3",
+      "type": "boundary",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go"
+    },
+    {
+      "id": "CAP-3-4",
+      "capability_id": "CAP-3",
+      "type": "dependency-failure",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go"
+    },
+    {
+      "id": "CAP-3-5",
+      "capability_id": "CAP-3",
+      "type": "observability",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go"
+    },
+    {
+      "id": "CAP-3-6",
+      "capability_id": "CAP-3",
+      "type": "rollback",
+      "automated": true,
+      "evidence": "internal/db/recovery_test.go"
+    },
+    {
+      "id": "CAP-4-1",
+      "capability_id": "CAP-4",
+      "type": "positive",
+      "automated": true,
+      "evidence": "internal/server/security_test.go"
+    },
+    {
+      "id": "CAP-4-2",
+      "capability_id": "CAP-4",
+      "type": "negative",
+      "automated": true,
+      "evidence": "internal/server/security_test.go"
+    },
+    {
+      "id": "CAP-4-3",
+      "capability_id": "CAP-4",
+      "type": "boundary",
+      "automated": true,
+      "evidence": "internal/server/security_test.go"
+    },
+    {
+      "id": "CAP-4-4",
+      "capability_id": "CAP-4",
+      "type": "dependency-failure",
+      "automated": true,
+      "evidence": "internal/server/security_test.go"
+    },
+    {
+      "id": "CAP-4-5",
+      "capability_id": "CAP-4",
+      "type": "observability",
+      "automated": true,
+      "evidence": "internal/server/security_test.go"
+    },
+    {
+      "id": "CAP-4-6",
+      "capability_id": "CAP-4",
+      "type": "rollback",
+      "automated": true,
+      "evidence": "internal/server/security_test.go"
+    }
+  ]
+}

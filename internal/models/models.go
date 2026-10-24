@@ -26,6 +26,9 @@ type Team struct {
 }
 
 type Ticket struct {
+	RepeatRule          string     `json:"repeatRule"`
+	RepeatAnchor        int        `json:"repeatAnchor,omitempty"`
+	RepeatSourceID      *string    `json:"repeatSourceId,omitempty"`
 	Revision            int        `json:"revision"`
 	ID                  string     `json:"id"`
 	ProjectID           string     `json:"projectId"`
@@ -149,6 +152,7 @@ type UpdateTeamRequest struct {
 }
 
 type CreateTicketRequest struct {
+	RepeatRule         string   `json:"repeatRule,omitempty"`
 	ProjectID          string   `json:"projectId"`
 	TeamID             *string  `json:"teamId,omitempty"`
 	Title              string   `json:"title"`
@@ -166,6 +170,7 @@ type CreateTicketRequest struct {
 }
 
 type UpdateTicketRequest struct {
+	RepeatRule          *string  `json:"repeatRule,omitempty"`
 	ExpectedRevision    *int     `json:"expectedRevision,omitempty"`
 	TeamID              *string  `json:"teamId,omitempty"`
 	Title               *string  `json:"title,omitempty"`

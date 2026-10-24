@@ -4,6 +4,7 @@ import Focus from "./pages/Focus";
 import Home from "./pages/Home";
 import Welcome from "./pages/Welcome";
 import Help from "./pages/Help";
+import Recovery from "./pages/Recovery";
 import Board from "./pages/Board";
 import Projects from "./pages/Projects";
 import Teams from "./pages/Teams";
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="board" element={<Board />} />
           <Route path="welcome" element={<Welcome />} />
           <Route path="help" element={<Help />} />
+          <Route path="recovery" element={<Recovery />} />
           <Route path="projects" element={<Projects />} />
           <Route path="teams" element={<Teams />} />
           <Route path="tickets" element={<Tickets />} />
