@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/Tristan578/taskboard/internal/db"
 	"github.com/Tristan578/taskboard/internal/models"
 	"testing"
 )
@@ -37,5 +39,36 @@ func TestAgentWorkflowTools(t *testing.T) {
 		if !names[name] {
 			t.Fatal("tool undiscoverable", name)
 		}
+	}
+}
+
+func TestMCPStaleEditorsCannotOverwriteWork(t *testing.T) {
+	server, store, cleanup := setupTestMCP(t)
+	defer cleanup()
+	t.Setenv("GITHUB_TOKEN", "test-token-no-network")
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "Work", Prefix: "W", CompletionPolicy: "manual"})
+	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "Original"})
+	title := "Newer work"
+	if _, err := store.UpdateTicket(ticket.ID, models.UpdateTicketRequest{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"update_ticket", "move_ticket", "delete_ticket", "complete_ticket"} {
+		args, _ := json.Marshal(map[string]any{"id": ticket.ID, "expectedRevision": ticket.Revision, "title": "Stale edit", "status": "done", "evidence": "https://github.com/o/r/pull/1"})
+		var conflict *db.ConflictError
+		if _, err := server.callTool(name, args); !errors.As(err, &conflict) {
+			t.Fatalf("%s did not reject stale input: %v", name, err)
+		}
+		if _, err := server.callTool(name, json.RawMessage(`invalid`)); err == nil {
+			t.Fatalf("%s accepted invalid JSON", name)
+		}
+		for _, tool := range server.toolDefinitions() {
+			if tool.Name == name && tool.InputSchema.Properties["expectedRevision"].Type != "integer" {
+				t.Fatalf("%s does not advertise revision checking", name)
+			}
+		}
+	}
+	saved, _ := store.GetTicket(ticket.ID)
+	if saved == nil || saved.Title != title || saved.Status != "todo" {
+		t.Fatal("agent overwrote newer work")
 	}
 }

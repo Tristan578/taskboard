@@ -26,7 +26,8 @@ import {
   Users,
   Plus,
 } from "lucide-react";
-import { api, type Ticket, type Project, type Team, type BoardColumn, type SyncStatus } from "../api/client";
+import { api, type TicketUpdate, type Ticket, type Project, type Team, type BoardColumn, type SyncStatus } from "../api/client";
+import {displayDue} from "../lib/focus";
 import TicketPanel from "../components/TicketPanel";
 import CreateTicketModal from "../components/CreateTicketModal";
 
@@ -149,7 +150,7 @@ function TicketCard({
       {ticket.dueDate && (
         <div className="flex items-center gap-1.5 text-xs text-slate-500">
           <Calendar className="w-3 h-3" />
-          {new Date(ticket.dueDate).toLocaleDateString()}
+          {displayDue(ticket.dueDate)}
         </div>
       )}
       {ticket.work?.agent && <p className={`text-xs ${ticket.work.stale && ticket.status==="in_progress" ? "text-amber-400" : "text-cyan-400"}`}>{ticket.work.agent} · {ticket.work.stale ? "No recent heartbeat" : "Reported recently"}</p>}
@@ -356,7 +357,7 @@ export default function Board() {
     if (!targetStatus) return;
 
     try {
-      await api.tickets.move(active.id as string, targetStatus);
+      await api.tickets.move(active.id as string, targetStatus,undefined,activeTicket?.revision);
     } catch(e) {
       await loadBoard(); setError(e instanceof Error ? e.message : "Move failed");
     }
@@ -366,13 +367,15 @@ export default function Board() {
     setSelectedTicket(ticket);
   };
 
-  const handleUpdate = async (id: string, data: Partial<Ticket>) => {
-    await api.tickets.update(id, data);
-    loadBoard();
+  const handleUpdate = async (id: string, data: TicketUpdate) => {
+    const updated = await api.tickets.update(id, data);
+    setSelectedTicket(updated);
+    void loadBoard();
+    return updated;
   };
 
-  const handleDelete = async (id: string) => {
-    await api.tickets.delete(id);
+  const handleDelete = async (id: string, revision?: number) => {
+    await api.tickets.delete(id,revision);
     loadBoard();
   };
 

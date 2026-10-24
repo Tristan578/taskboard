@@ -338,9 +338,8 @@ func TestStore_InvalidDate(t *testing.T) {
 	defer cleanup()
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	badDate := "not-a-date"
-	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", DueDate: &badDate})
-	if tick.DueDate != nil {
-		t.Errorf("1")
+	if _, err := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", DueDate: &badDate}); err == nil {
+		t.Fatal("invalid due date accepted")
 	}
 }
 

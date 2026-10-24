@@ -21,6 +21,10 @@ copy/paste, then add agent automation when you need it.
 - Optional CLI/MCP agents, heartbeats, stale-work detection, and conflict-aware
   GitHub issue synchronization.
 - Local storage with downloadable database backups.
+- A **Next up** page for overdue work, reviews, and tasks that need help, with
+  search across task titles and notes.
+- Conflict checks protect browser edits from overwriting newer agent work;
+  unsaved changes stay open for comparison.
 
 [Install and create your first board](docs/getting-started.md) ·
 [Workflow and migration details](docs/rebuild.md) · [Usability scope](docs/usability.md)

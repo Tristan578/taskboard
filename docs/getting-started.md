@@ -65,6 +65,17 @@ an optional separate connection under **Help & connections → Advanced**.
 
 ## Keep your work safe
 
+After setup, **Next up** helps you choose a task across your boards. Filter for
+due work, reviews, or tasks that need help; search includes notes. Open a task to
+edit it or ask your AI for help. The list refreshes while you use it.
+
+If an agent changes a task while you are editing, Player2 keeps your draft open
+and asks you to compare it with the latest saved version. Copy anything you want
+to keep before continuing. Closing an unsaved editor or reloading the page warns
+you first. Drafts in an open editor are not a backup; save your work before quitting.
+External images in notes appear as links so opening a task does not contact the
+image host automatically.
+
 Boards live on this computer, not in the browser cache. Closing the browser leaves
 them intact. There is no automatic cloud backup or phone sync. Use **Help &
 connections → Download backup** to save a consistent database snapshot somewhere

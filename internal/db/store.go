@@ -458,8 +458,13 @@ func (s *Store) CreateTicket(req models.CreateTicketRequest) (*models.Ticket, er
 		return nil, err
 	}
 	if req.DueDate != nil {
-		parsed, err := time.Parse("2006-01-02", *req.DueDate)
-		if err == nil {
+		if *req.DueDate == "" {
+			t.DueDate = nil
+		} else {
+			parsed, err := time.Parse("2006-01-02", *req.DueDate)
+			if err != nil {
+				return nil, invalid("use a valid due date in YYYY-MM-DD format")
+			}
 			t.DueDate = &parsed
 		}
 	}
@@ -495,7 +500,7 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 	}
 
 	if req.ExpectedRevision != nil && t.Revision != *req.ExpectedRevision {
-		return nil, invalid("ticket changed during sync; retry")
+		return nil, &ConflictError{}
 	}
 	previousStatus := t.Status
 	if req.Title != nil {
@@ -517,7 +522,11 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 		t.LexoRank = *req.LexoRank
 	}
 	if req.TeamID != nil {
-		t.TeamID = req.TeamID
+		if *req.TeamID == "" {
+			t.TeamID = nil
+		} else {
+			t.TeamID = req.TeamID
+		}
 	}
 	if req.GitHubIssueNumber != nil {
 		t.GitHubIssueNumber = req.GitHubIssueNumber
@@ -541,8 +550,13 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 		t.IsDraft = *req.IsDraft
 	}
 	if req.DueDate != nil {
-		parsed, err := time.Parse("2006-01-02", *req.DueDate)
-		if err == nil {
+		if *req.DueDate == "" {
+			t.DueDate = nil
+		} else {
+			parsed, err := time.Parse("2006-01-02", *req.DueDate)
+			if err != nil {
+				return nil, invalid("use a valid due date in YYYY-MM-DD format")
+			}
 			t.DueDate = &parsed
 		}
 	}
@@ -551,8 +565,13 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 	}
 	t.UpdatedAt = time.Now()
 
-	result, err := s.db.Exec(
-		`UPDATE tickets SET team_id=?, title=?, description=?, status=?, priority=?, due_date=?, position=?, lexo_rank=?, github_issue_number=?, github_last_synced_sha=?, user_story=?, acceptance_criteria=?, technical_details=?, testing_details=?, is_draft=?, updated_at=?, revision=revision+1 WHERE id=? AND revision=?`,
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.Exec(
+		`UPDATE tickets SET team_id=?, title=?, description=?, status=?, priority=?, due_date=?, position=?, lexo_rank=?, github_issue_number=?, github_last_synced_sha=?, user_story=?, acceptance_criteria=?, technical_details=?, testing_details=?, is_draft=?, updated_at=?, revision=revision+1 WHERE id=? AND revision=? AND deleted_at IS NULL`,
 		t.TeamID, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.GitHubIssueNumber, t.GitHubLastSyncedSHA, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.UpdatedAt, t.ID, t.Revision,
 	)
 	if err != nil {
@@ -562,23 +581,34 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 	if n, err := result.RowsAffected(); err != nil {
 		return nil, err
 	} else if n == 0 {
-		return nil, invalid("ticket changed; reload and retry")
+		return nil, &ConflictError{}
 	}
 
 	if req.Labels != nil {
-		_, _ = s.db.Exec("DELETE FROM ticket_labels WHERE ticket_id = ?", id)
+		if _, err = tx.Exec("DELETE FROM ticket_labels WHERE ticket_id = ?", id); err != nil {
+			return nil, err
+		}
 		for _, labelID := range req.Labels {
-			_, _ = s.db.Exec("INSERT OR IGNORE INTO ticket_labels (ticket_id, label_id) VALUES (?, ?)", id, labelID)
+			if _, err = tx.Exec("INSERT OR IGNORE INTO ticket_labels (ticket_id, label_id) VALUES (?, ?)", id, labelID); err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	if req.BlockedBy != nil {
-		_, _ = s.db.Exec("DELETE FROM ticket_dependencies WHERE ticket_id = ?", id)
+		if _, err = tx.Exec("DELETE FROM ticket_dependencies WHERE ticket_id = ?", id); err != nil {
+			return nil, err
+		}
 		for _, blockerID := range req.BlockedBy {
-			_, _ = s.db.Exec("INSERT OR IGNORE INTO ticket_dependencies (ticket_id, blocked_by_id) VALUES (?, ?)", id, blockerID)
+			if _, err = tx.Exec("INSERT OR IGNORE INTO ticket_dependencies (ticket_id, blocked_by_id) VALUES (?, ?)", id, blockerID); err != nil {
+				return nil, err
+			}
 		}
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
 	return s.GetTicket(id)
 }
 
@@ -591,12 +621,27 @@ func (s *Store) MoveTicket(id string, req models.MoveTicketRequest) (*models.Tic
 		return nil, fmt.Errorf("ticket not found")
 	}
 	draft := t.IsDraft && req.Status == "todo"
-	return s.UpdateTicket(id, models.UpdateTicketRequest{Status: &req.Status, Position: req.Position, IsDraft: &draft})
+	return s.UpdateTicket(id, models.UpdateTicketRequest{Status: &req.Status, Position: req.Position, IsDraft: &draft, ExpectedRevision: req.ExpectedRevision})
 }
 
-func (s *Store) DeleteTicket(id string) error {
-	_, err := s.db.Exec("UPDATE tickets SET deleted_at = ? WHERE id = ?", time.Now(), id)
-	return err
+func (s *Store) DeleteTicket(id string, expected ...int) error {
+	query := "UPDATE tickets SET deleted_at=?,revision=revision+1 WHERE id=? AND deleted_at IS NULL"
+	args := []any{time.Now(), id}
+	if len(expected) > 0 {
+		query += " AND revision=?"
+		args = append(args, expected[0])
+	}
+	// #nosec G202 -- query suffix is a fixed literal; values are bound parameters.
+	result, err := s.db.Exec(query, args...)
+	if err != nil {
+		return err
+	}
+	if n, e := result.RowsAffected(); e != nil {
+		return e
+	} else if n == 0 && len(expected) > 0 {
+		return &ConflictError{}
+	}
+	return nil
 }
 
 func (s *Store) PurgeDeletedTickets(projectID string) error {

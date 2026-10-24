@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import TerminalPanel from "./TerminalPanel";
 const items = [
+ {to:"/focus",icon:ListTodo,label:"Next up"},
   { to: "/board", icon: LayoutDashboard, label: "My board" },
   { to: "/welcome", icon: Plus, label: "New board" },
   { to: "/projects", icon: FolderKanban, label: "Boards" },

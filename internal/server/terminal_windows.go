@@ -26,6 +26,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(64 << 10)
 
 	shell := os.Getenv("COMSPEC")
 	if shell == "" {

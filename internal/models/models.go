@@ -166,7 +166,7 @@ type CreateTicketRequest struct {
 }
 
 type UpdateTicketRequest struct {
-	ExpectedRevision    *int     `json:"-"`
+	ExpectedRevision    *int     `json:"expectedRevision,omitempty"`
 	TeamID              *string  `json:"teamId,omitempty"`
 	Title               *string  `json:"title,omitempty"`
 	Description         *string  `json:"description,omitempty"`
@@ -187,8 +187,9 @@ type UpdateTicketRequest struct {
 }
 
 type MoveTicketRequest struct {
-	Status   string   `json:"status"`
-	Position *float64 `json:"position,omitempty"`
+	ExpectedRevision *int     `json:"expectedRevision,omitempty"`
+	Status           string   `json:"status"`
+	Position         *float64 `json:"position,omitempty"`
 }
 
 type CreateSubtaskRequest struct {

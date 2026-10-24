@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Tristan578/taskboard/internal/db"
@@ -521,8 +522,17 @@ func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
 	}
-	if err := s.store.DeleteTicket(id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	var expected []int
+	if value := r.URL.Query().Get("revision"); value != "" {
+		revision, err := strconv.Atoi(value)
+		if err != nil || revision < 0 {
+			writeError(w, 400, "invalid task revision")
+			return
+		}
+		expected = append(expected, revision)
+	}
+	if err := s.store.DeleteTicket(id, expected...); err != nil {
+		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -731,13 +741,18 @@ func (s *Server) reportActivity(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) completeTicket(w http.ResponseWriter, r *http.Request) {
 	var a struct {
-		Evidence string `json:"evidence"`
+		Evidence         string `json:"evidence"`
+		ExpectedRevision *int   `json:"expectedRevision,omitempty"`
 	}
 	if err := decodeJSON(r, &a); err != nil {
 		writeError(w, 400, "invalid JSON")
 		return
 	}
-	t, err := workflow.Complete(r.Context(), s.store, chi.URLParam(r, "id"), a.Evidence)
+	var expected []int
+	if a.ExpectedRevision != nil {
+		expected = append(expected, *a.ExpectedRevision)
+	}
+	t, err := workflow.Complete(r.Context(), s.store, chi.URLParam(r, "id"), a.Evidence, expected...)
 	if err != nil {
 		writeError(w, 409, err.Error())
 		return
@@ -773,6 +788,11 @@ func (s *Server) retrySync(w http.ResponseWriter, r *http.Request) {
 
 func writeStoreError(w http.ResponseWriter, err error) {
 	var invalid *db.ValidationError
+	var conflict *db.ConflictError
+	if errors.As(err, &conflict) {
+		writeError(w, 409, err.Error())
+		return
+	}
 	if errors.As(err, &invalid) {
 		writeError(w, 400, err.Error())
 	} else {

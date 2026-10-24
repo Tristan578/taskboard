@@ -5,6 +5,11 @@ on:
   pull_request:
     paths:
       - 'packaging/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'web/**'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/release.yml'
   push:
     tags:

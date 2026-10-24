@@ -10,6 +10,13 @@ import (
 
 type ValidationError struct{ Message string }
 
+// ConflictError preserves the newer version when an editor or integration is stale.
+type ConflictError struct{}
+
+func (*ConflictError) Error() string {
+	return "This task changed since you last read it. Review the latest version before trying again."
+}
+
 func (e *ValidationError) Error() string       { return e.Message }
 func invalid(format string, args ...any) error { return &ValidationError{fmt.Sprintf(format, args...)} }
 
@@ -103,13 +110,16 @@ func (s *Store) ReportActivity(id string, a models.ActivityRequest) (*models.Tic
 }
 
 // CompleteVerified is called only after the integration has verified remote evidence.
-func (s *Store) CompleteVerified(id, url string) (*models.Ticket, error) {
+func (s *Store) CompleteVerified(id, url string, expected ...int) (*models.Ticket, error) {
 	t, err := s.GetTicket(id)
 	if err != nil {
 		return nil, err
 	}
 	if t == nil {
 		return nil, fmt.Errorf("ticket not found")
+	}
+	if len(expected) > 0 && t.Revision != expected[0] {
+		return nil, &ConflictError{}
 	}
 	if t.IsDraft {
 		return nil, fmt.Errorf("publish a draft before completing it")
@@ -126,8 +136,14 @@ func (s *Store) CompleteVerified(id, url string) (*models.Ticket, error) {
 	if _, err = tx.Exec(`INSERT INTO work_state(ticket_id,completion_url,completed_at) VALUES(?,?,?) ON CONFLICT(ticket_id) DO UPDATE SET completion_url=excluded.completion_url,completed_at=excluded.completed_at`, id, url, now); err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec("UPDATE tickets SET status='done',updated_at=? WHERE id=? AND deleted_at IS NULL", now, id); err != nil {
+	result, err := tx.Exec("UPDATE tickets SET status='done',updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND deleted_at IS NULL", now, id, t.Revision)
+	if err != nil {
 		return nil, err
+	}
+	if n, e := result.RowsAffected(); e != nil {
+		return nil, e
+	} else if n != 1 {
+		return nil, &ConflictError{}
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, err

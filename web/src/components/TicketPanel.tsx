@@ -1,9 +1,17 @@
 import TaskAIHelp from "./TaskAIHelp";
 import WorkEvidence from "./WorkEvidence";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Trash2, CheckCircle2, Circle, Pencil, Eye } from "lucide-react";
-import Markdown from "react-markdown";
-import { api, type Ticket, type Project, type Team, type Subtask } from "../api/client";
+import Markdown from "./SafeMarkdown";
+import {
+  api,
+  ApiError,
+  type TicketUpdate,
+  type Ticket,
+  type Project,
+  type Team,
+  type Subtask,
+} from "../api/client";
 
 const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 const PRIORITIES = ["urgent", "high", "medium", "low"];
@@ -11,7 +19,9 @@ const PRIORITIES = ["urgent", "high", "medium", "low"];
 const STATUS_LABELS: Record<string, string> = {
   todo: "Todo",
   in_progress: "In Progress",
-  review: "Review", blocked: "Blocked", done: "Done",
+  review: "Review",
+  blocked: "Blocked",
+  done: "Done",
 };
 
 export default function TicketPanel({
@@ -26,70 +36,175 @@ export default function TicketPanel({
   projects: Project[];
   teams: Team[];
   onClose: () => void;
-  onUpdate: (id: string, data: Partial<Ticket>) => void | Promise<void>;
-  onDelete: (id: string) => void;
+  onUpdate: (id: string, data: TicketUpdate) => Promise<Ticket>;
+  onDelete: (id: string, revision?: number) => Promise<void>;
 }) {
   const [title, setTitle] = useState(ticket.title);
-  const [description, setDescription] = useState(ticket.description);
+  const [description, setDescription] = useState(ticket.description || "");
   const [status, setStatus] = useState(ticket.status);
   const [priority, setPriority] = useState(ticket.priority);
-  const [dueDate, setDueDate] = useState(ticket.dueDate || "");
+  const [dueDate, setDueDate] = useState(ticket.dueDate?.slice(0, 10) || "");
   const [teamId, setTeamId] = useState(ticket.teamId || "");
   const [userStory, setUserStory] = useState(ticket.userStory || "");
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState(ticket.acceptanceCriteria || "");
-  const [technicalDetails, setTechnicalDetails] = useState(ticket.technicalDetails || "");
-  const [testingDetails, setTestingDetails] = useState(ticket.testingDetails || "");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
+    ticket.acceptanceCriteria || "",
+  );
+  const [technicalDetails, setTechnicalDetails] = useState(
+    ticket.technicalDetails || "",
+  );
+  const [testingDetails, setTestingDetails] = useState(
+    ticket.testingDetails || "",
+  );
   const [subtasks, setSubtasks] = useState<Subtask[]>(ticket.subtasks || []);
   const [newSubtask, setNewSubtask] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [baseRevision, setBaseRevision] = useState(ticket.revision);
+  const [conflict, setConflict] = useState(false);
+  const [latest, setLatest] = useState<Ticket | null>(null);
   const [saveError, setSaveError] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [descMode, setDescMode] = useState<"preview" | "write">(description ? "preview" : "write");
+  const [descMode, setDescMode] = useState<"preview" | "write">(
+    description ? "preview" : "write",
+  );
 
   const markDirty = () => setDirty(true);
 
   const project = projects.find((p) => p.id === ticket.projectId);
 
-  const handleSave = async () => {
-   setSaveError("");
-   try { await onUpdate(ticket.id, {
-      title,
-      description,
-      status,
-      priority,
-      dueDate: dueDate || undefined,
-      teamId: teamId || undefined,
-      userStory,
-      acceptanceCriteria,
-      technicalDetails,
-      testingDetails,
-    });
-    setDirty(false);
-   } catch(e) {setSaveError(e instanceof Error ? e.message : "Save failed");}
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const closeSafely = () => {
+    if (!busy && (!dirty || window.confirm("Discard your unsaved changes?")))
+      onClose();
+  };
+  const handleSave = async (publish = false) => {
+    setSaveError("");
+    setBusy(true);
+    try {
+      const updated = await onUpdate(ticket.id, {
+        title,
+        description,
+        status,
+        priority,
+        dueDate,
+        teamId,
+        userStory,
+        acceptanceCriteria,
+        technicalDetails,
+        testingDetails,
+        expectedRevision: baseRevision,
+        ...(publish ? { isDraft: false } : {}),
+      });
+      setTitle(updated.title);
+      setDescription(updated.description || "");
+      setStatus(updated.status);
+      setPriority(updated.priority);
+      setDueDate(updated.dueDate?.slice(0, 10) || "");
+      setTeamId(updated.teamId || "");
+      setUserStory(updated.userStory || "");
+      setAcceptanceCriteria(updated.acceptanceCriteria || "");
+      setTechnicalDetails(updated.technicalDetails || "");
+      setTestingDetails(updated.testingDetails || "");
+      setSubtasks(updated.subtasks || []);
+      setBaseRevision(updated.revision);
+      setDirty(false);
+      setConflict(false);
+      setLatest(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+      if (e instanceof ApiError && e.status === 409) setConflict(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const compareLatest = async () => {
+    setBusy(true);
+    try {
+      setLatest(await api.tickets.get(ticket.id));
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "Could not load the latest task.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const handleDelete = async () => {
+    if (
+      !window.confirm(
+        "Delete this task? Its notes and checklist will no longer appear on the board.",
+      )
+    )
+      return;
+    setBusy(true);
+    setSaveError("");
+    try {
+      await onDelete(ticket.id, baseRevision);
+      onClose();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Delete failed");
+      if (e instanceof ApiError && e.status === 409) setConflict(true);
+    } finally {
+      setBusy(false);
+    }
   };
 
+  const subtaskAction = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setSaveError("");
+    try {
+      await action();
+    } catch (e) {
+      setSaveError(
+        e instanceof Error
+          ? e.message
+          : "Checklist update failed. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   const handleAddSubtask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSubtask.trim()) return;
-    const sub = await api.tickets.addSubtask(ticket.id, newSubtask);
-    setSubtasks((prev) => [...prev, sub]);
-    setNewSubtask("");
+    await subtaskAction(async () => {
+      const sub = await api.tickets.addSubtask(ticket.id, newSubtask.trim());
+      setSubtasks((prev) => [...prev, sub]);
+      setNewSubtask("");
+    });
   };
-
   const handleToggleSubtask = async (id: string) => {
-    const updated = await api.subtasks.toggle(id);
-    setSubtasks((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    await subtaskAction(async () => {
+      const updated = await api.subtasks.toggle(id);
+      setSubtasks((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    });
   };
-
   const handleDeleteSubtask = async (id: string) => {
-    await api.subtasks.delete(id);
-    setSubtasks((prev) => prev.filter((s) => s.id !== id));
+    await subtaskAction(async () => {
+      await api.subtasks.delete(id);
+      setSubtasks((prev) => prev.filter((s) => s.id !== id));
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-slate-900 border-l border-slate-700 overflow-y-auto">
-
+      <div className="absolute inset-0 bg-black/40" onClick={closeSafely} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Task details"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") closeSafely();
+        }}
+        className="relative w-full max-w-xl bg-slate-900 border-l border-slate-700 overflow-y-auto"
+      >
         <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xs font-mono text-slate-500">
@@ -103,16 +218,17 @@ export default function TicketPanel({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                onDelete(ticket.id);
-                onClose();
-              }}
+              aria-label="Delete task"
+              disabled={busy}
+              onClick={() => void handleDelete()}
               className="text-slate-500 hover:text-red-400 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
             </button>
             <button
-              onClick={onClose}
+              aria-label="Close task"
+              disabled={busy}
+              onClick={closeSafely}
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <X className="w-5 h-5" />
@@ -120,12 +236,98 @@ export default function TicketPanel({
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
-          <p className="text-xs text-slate-500 break-all">Task ID: {ticket.id}</p>
-          <TaskAIHelp ticket={ticket} project={project}/>
-          <WorkEvidence manual={project?.completionPolicy === "manual"} ticket={ticket} onRefresh={onClose} />
-{saveError && <p role="alert" className="text-red-400">{saveError}</p>}
+        <fieldset disabled={busy} className="p-6 space-y-6 min-w-0">
+          <p className="text-xs text-slate-500 break-all">
+            Task ID: {ticket.id}
+          </p>
+          <TaskAIHelp
+            ticket={{ ...ticket, title, description }}
+            project={project}
+          />
+          {dirty && (
+            <p role="status" className="text-sm text-amber-200">
+              Unsaved changes. Save your notes before completing this task.
+            </p>
+          )}
+          <fieldset disabled={dirty || busy}>
+            <WorkEvidence
+              manual={project?.completionPolicy === "manual"}
+              ticket={ticket}
+              onRefresh={onClose}
+              onBusyChange={setBusy}
+            />
+          </fieldset>
+          {saveError && (
+            <p role="alert" className="text-red-400">
+              {saveError}
+            </p>
+          )}
+          {conflict && (
+            <section className="border border-amber-700 rounded-lg p-4 space-y-3">
+              <p className="text-sm">
+                Your draft has not replaced the saved task. Compare both
+                versions before continuing.
+              </p>
+              <button
+                className="easy-secondary"
+                disabled={busy}
+                onClick={() => void compareLatest()}
+              >
+                View latest saved version
+              </button>
+              {latest && (
+                <>
+                  <dl
+                    aria-label="Latest saved task"
+                    className="text-sm space-y-3 max-h-72 overflow-auto"
+                  >
+                    {[
+                      ["Title", latest.title],
+                      ["Notes", latest.description],
+                      ["Status", STATUS_LABELS[latest.status] || latest.status],
+                      ["Priority", latest.priority],
+                      ["Due date", latest.dueDate?.slice(0, 10)],
+                      [
+                        "Team",
+                        teams.find((team) => team.id === latest.teamId)?.name,
+                      ],
+                      ["User story", latest.userStory],
+                      ["Acceptance criteria", latest.acceptanceCriteria],
+                      ["Technical details", latest.technicalDetails],
+                      ["Testing details", latest.testingDetails],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt className="text-slate-400">{label}</dt>
+                        <dd className="whitespace-pre-wrap break-words">
+                          {value || "None"}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="text-sm text-slate-300">
+                    Copy any changes you want to keep into your draft.
+                    Continuing lets your next save replace the fields shown
+                    above.
+                  </p>
+                  <button
+                    className="easy-secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      setBaseRevision(latest.revision);
+                      setConflict(false);
+                      setSaveError("");
+                      setLatest(null);
+                    }}
+                  >
+                    I’ve compared them; continue with my draft
+                  </button>
+                </>
+              )}
+            </section>
+          )}
           <input
+            autoFocus
+            aria-label="Task title"
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
@@ -163,6 +365,7 @@ export default function TicketPanel({
             </div>
             {descMode === "write" ? (
               <textarea
+                aria-label="Task notes"
                 value={description}
                 onChange={(e) => {
                   setDescription(e.target.value);
@@ -186,51 +389,90 @@ export default function TicketPanel({
             )}
           </div>
 
-          {(project?.strict || userStory || acceptanceCriteria || technicalDetails || testingDetails) && (
+          {(project?.strict ||
+            userStory ||
+            acceptanceCriteria ||
+            technicalDetails ||
+            testingDetails) && (
             <div className="space-y-4 border-t border-slate-800 pt-6">
-               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Agentic Details {project?.strict && <span className="text-blue-500 ml-1">(Strict)</span>}
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Agentic Details{" "}
+                {project?.strict && (
+                  <span className="text-blue-500 ml-1">(Strict)</span>
+                )}
               </h4>
-              
+
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">User Story</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    User Story
+                  </label>
                   <textarea
                     value={userStory}
-                    onChange={(e) => { setUserStory(e.target.value); markDirty(); }}
+                    onChange={(e) => {
+                      setUserStory(e.target.value);
+                      markDirty();
+                    }}
                     placeholder="As a... I want... So that..."
                     className={`w-full bg-slate-800/50 border rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                      project?.strict && !userStory ? "border-red-500/50" : "border-slate-700"
+                      project?.strict && !userStory
+                        ? "border-red-500/50"
+                        : "border-slate-700"
                     }`}
                   />
-                  {project?.strict && !userStory && <p className="text-[10px] text-red-400 mt-1">Required in Strict Mode</p>}
+                  {project?.strict && !userStory && (
+                    <p className="text-[10px] text-red-400 mt-1">
+                      Required in Strict Mode
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Acceptance Criteria (Gherkin)</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Acceptance Criteria (Gherkin)
+                  </label>
                   <textarea
                     value={acceptanceCriteria}
-                    onChange={(e) => { setAcceptanceCriteria(e.target.value); markDirty(); }}
+                    onChange={(e) => {
+                      setAcceptanceCriteria(e.target.value);
+                      markDirty();
+                    }}
                     placeholder="Given... When... Then..."
                     className={`w-full bg-slate-800/50 border rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono ${
-                      project?.strict && !acceptanceCriteria ? "border-red-500/50" : "border-slate-700"
+                      project?.strict && !acceptanceCriteria
+                        ? "border-red-500/50"
+                        : "border-slate-700"
                     }`}
                   />
-                  {project?.strict && !acceptanceCriteria && <p className="text-[10px] text-red-400 mt-1">Required in Strict Mode</p>}
+                  {project?.strict && !acceptanceCriteria && (
+                    <p className="text-[10px] text-red-400 mt-1">
+                      Required in Strict Mode
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Technical Implementation</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Technical Implementation
+                  </label>
                   <textarea
                     value={technicalDetails}
-                    onChange={(e) => { setTechnicalDetails(e.target.value); markDirty(); }}
+                    onChange={(e) => {
+                      setTechnicalDetails(e.target.value);
+                      markDirty();
+                    }}
                     placeholder="Proposed architectural changes..."
                     className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Testing Strategy</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Testing Strategy
+                  </label>
                   <textarea
                     value={testingDetails}
-                    onChange={(e) => { setTestingDetails(e.target.value); markDirty(); }}
+                    onChange={(e) => {
+                      setTestingDetails(e.target.value);
+                      markDirty();
+                    }}
                     placeholder="Unit tests, integration tests..."
                     className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
@@ -284,6 +526,7 @@ export default function TicketPanel({
               </label>
               <input
                 type="date"
+                aria-label="Due date"
                 value={dueDate}
                 onChange={(e) => {
                   setDueDate(e.target.value);
@@ -324,7 +567,8 @@ export default function TicketPanel({
 
           {dirty && (
             <button
-              onClick={handleSave}
+              onClick={() => void handleSave()}
+              disabled={busy || conflict}
               className="w-full px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
             >
               Save Changes
@@ -333,12 +577,18 @@ export default function TicketPanel({
 
           {ticket.isDraft && (
             <button
+              disabled={busy || conflict}
               onClick={() => {
-                if (project?.strict && (!userStory.trim() || !acceptanceCriteria.trim())) {
-                  alert("Strict mode: User Story and Acceptance Criteria are required before publishing.");
+                if (
+                  project?.strict &&
+                  (!userStory.trim() || !acceptanceCriteria.trim())
+                ) {
+                  alert(
+                    "Strict mode: User Story and Acceptance Criteria are required before publishing.",
+                  );
                   return;
                 }
-                onUpdate(ticket.id, { isDraft: false });
+                void handleSave(true);
               }}
               className="w-full px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors"
             >
@@ -399,7 +649,7 @@ export default function TicketPanel({
               </button>
             </form>
           </div>
-        </div>
+        </fieldset>
       </div>
     </div>
   );

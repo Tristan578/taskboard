@@ -15,7 +15,7 @@ import (
 
 // Complete verifies a GitHub merge or successful deployment in the linked repo.
 // The caller explicitly associates that evidence with this ticket.
-func Complete(ctx context.Context, store *db.Store, id, evidence string) (*models.Ticket, error) {
+func Complete(ctx context.Context, store *db.Store, id, evidence string, expected ...int) (*models.Ticket, error) {
 	if os.Getenv("GITHUB_TOKEN") == "" {
 		return nil, fmt.Errorf("GITHUB_TOKEN is required to verify completion")
 	}
@@ -25,6 +25,9 @@ func Complete(ctx context.Context, store *db.Store, id, evidence string) (*model
 	}
 	if t == nil {
 		return nil, fmt.Errorf("ticket not found")
+	}
+	if len(expected) > 0 && t.Revision != expected[0] {
+		return nil, &db.ConflictError{}
 	}
 	p, err := store.GetProject(t.ProjectID)
 	if err != nil {
@@ -43,7 +46,7 @@ func Complete(ctx context.Context, store *db.Store, id, evidence string) (*model
 	if err := VerifyEvidence(ctx, c, owner, repo, evidence); err != nil {
 		return nil, err
 	}
-	return store.CompleteVerified(id, evidence)
+	return store.CompleteVerified(id, evidence, t.Revision)
 }
 func VerifyEvidence(ctx context.Context, c *github.Client, owner, repo, evidence string) error {
 	u, err := url.Parse(evidence)

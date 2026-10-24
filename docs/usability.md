@@ -33,6 +33,19 @@ are removed from the README entry path because they are not evidence of the new 
 - A consistent SQLite backup and installation-specific MCP settings are downloadable.
 - Windows per-user installer, macOS app/package, Debian package and Linux local
   launcher are built alongside the npm binaries.
+- Next up brings overdue tasks, reviews, blockers and stale agent activity into
+  one searchable list. Ordering follows visible rules, not an AI-generated score.
+- Browser saves, moves, completion and deletion include a revision check. A stale
+  editor keeps its draft, shows the saved fields for comparison and requires an
+  explicit choice before replacing them. MCP advertises the same optional check;
+  legacy clients must adopt it to gain protection against stale client snapshots.
+- Due dates are shown as calendar dates and can be cleared, as can team assignments.
+  Field and relationship edits commit together so failed labels do not leave a
+  partially saved task. Failed deletion leaves the editor open with an error.
+- The local server adds a Content Security Policy, framing and referrer limits,
+  browser Fetch Metadata checks and request/WebSocket size limits. Markdown images
+  become explicit links. This remains a trusted local app, not an authenticated
+  server for remote access.
 
 ## Acceptance evidence and unresolved limits
 
@@ -40,6 +53,19 @@ Automated tests cover first-board creation, retries without duplicates, invalid
 plans without partial writes, everyday versus software completion, backup restore
 reads, HTTP boundaries, and task handoff UI. CI builds native installer artifacts.
 Record the actual final CI results in the pull request.
+
+Additional tests exercise stale edits through storage, HTTP and MCP, atomic
+rollback, date/team clearing, conflict comparison, unsaved-close warnings,
+deletion failure, task ordering, Markdown links and browser request boundaries.
+
+## Recommended next validation
+
+Prioritize automatic local backups with an approachable restore flow and undo for
+deletion, then recurring tasks for repeat household/business work. These are not
+implemented in this pass. Before expanding into shared boards or paid hosting,
+watch several nontechnical people install Player2 and finish one real task without
+coaching. Measure where they stop, whether they return, and whether they understand
+what is saved locally versus sent to their AI provider.
 
 No autonomous app builder, provider subscription bridge, hosted multi-device sync,
 or universal agent connector is claimed. A first-app template is a guided project,

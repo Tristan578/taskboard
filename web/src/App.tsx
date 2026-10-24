@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
+import Focus from "./pages/Focus";
 import Home from "./pages/Home";
 import Welcome from "./pages/Welcome";
 import Help from "./pages/Help";
@@ -14,6 +15,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
+          <Route path="focus" element={<Focus />} />
           <Route path="board" element={<Board />} />
           <Route path="welcome" element={<Welcome />} />
           <Route path="help" element={<Help />} />

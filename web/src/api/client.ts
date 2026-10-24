@@ -39,7 +39,9 @@ export interface WorkState {
  stale: boolean; completionUrl?: string; completedAt?: string; conflict?: string;
 }
 export interface SyncStatus { lastError?: string; pendingJobs: number; failedJobs: number; lastSyncAt?: string; githubConfigured?: boolean; }
+export type TicketUpdate = Partial<Ticket> & { expectedRevision?: number };
 export interface Ticket {
+ revision: number;
  work?: WorkState;
   id: string;
   projectId: string;
@@ -95,6 +97,8 @@ function buildQuery(params: any): string {
   return "?" + entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
 }
 
+export class ApiError extends Error { status: number; constructor(message:string,status:number){super(message);this.status=status;} }
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -104,7 +108,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     const text = await res.text();
     let message = text;
     try { message = JSON.parse(text).error || text; } catch { /* Plain text response. */ }
-    throw new Error(message || "Something went wrong. Please try again.");
+    throw new ApiError(message || "Something went wrong. Please try again.",res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -156,7 +160,7 @@ export const api = {
   },
 
   tickets: {
-    complete: (id: string, evidence: string) => request<Ticket>(`/api/tickets/${id}/complete`, {method:"POST",body:JSON.stringify({evidence})}),
+    complete: (id: string, evidence: string, expectedRevision?: number) => request<Ticket>(`/api/tickets/${id}/complete`, {method:"POST",body:JSON.stringify({evidence,expectedRevision})}),
     resolve: (id: string, choice: "local" | "remote") => request(`/api/tickets/${id}/resolve`, {method:"POST",body:JSON.stringify({choice})}),
     list: () => request<Ticket[]>("/api/tickets"),
     listPaginated: (params: PaginationParams & { projectId?: string; status?: string; priority?: string }) =>
@@ -167,17 +171,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Ticket>) =>
+    update: (id: string, data: TicketUpdate) =>
       request<Ticket>(`/api/tickets/${id}`, {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    delete: (id: string) =>
-      request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
-    move: (id: string, status: string, position?: number) =>
+    delete: (id: string, revision?: number) =>
+      request<void>(`/api/tickets/${id}${revision===undefined?'':`?revision=${revision}`}`, { method: "DELETE" }),
+    move: (id: string, status: string, position?: number, expectedRevision?: number) =>
       request<Ticket>(`/api/tickets/${id}/move`, {
         method: "POST",
-        body: JSON.stringify({ status, position }),
+        body: JSON.stringify({ status, position, expectedRevision }),
       }),
     addSubtask: (id: string, title: string) =>
       request<Subtask>(`/api/tickets/${id}/subtasks`, {

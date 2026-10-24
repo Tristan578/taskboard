@@ -29,6 +29,10 @@ MCP stdio setup (configure in your agent client's MCP settings):
 {"mcpServers":{"player2":{"command":"player2-kanban","args":["mcp"]}}}
 ```
 Commands and MCP share the local database, including when the browser is closed.
+Before changing, moving, completing or deleting a ticket through MCP, read it with
+`get_ticket` and pass its `revision` as `expectedRevision`. If it changed, re-read
+the saved ticket and reconcile the newer work. Never blindly retry an old snapshot
+or discard someone's notes to get past a conflict.
 The browser process performs background GitHub reconciliation and needs
 GITHUB_TOKEN in its environment. Remote/cloud agents need an explicitly
 configured connection to the same workspace; installing a rule alone does not

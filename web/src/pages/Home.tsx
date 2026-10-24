@@ -9,7 +9,7 @@ export default function Home() {
     api.projects
       .list()
       .then((p) => {
-        if (active) setTarget(p?.length ? "/board" : "/welcome");
+        if (active) setTarget(p?.length ? "/focus" : "/welcome");
       })
       .catch(() => {
         if (active)

@@ -56,3 +56,36 @@ func TestWorkflowEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestBrowserIsolationHeadersAndFetchMetadata(t *testing.T) {
+	handler := localBoundary(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	for _, tc := range []struct {
+		path, site string
+		want       int
+	}{{"/api/backup", "cross-site", 403}, {"/api/projects", "same-site", 403}, {"/api/projects", "same-origin", 204}, {"/api/projects", "", 204}, {"/api/backup", "none", 204}, {"/", "cross-site", 204}} {
+		req := localRequest("GET", tc.path, nil)
+		req.Header.Set("Sec-Fetch-Site", tc.site)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != tc.want {
+			t.Fatalf("%s %s: %d", tc.path, tc.site, w.Code)
+		}
+		if w.Header().Get("X-Frame-Options") != "DENY" || w.Header().Get("Referrer-Policy") != "no-referrer" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			t.Fatal("missing browser protections")
+		}
+	}
+}
+func TestLargeAPIRequestRejectedWithoutWriting(t *testing.T) {
+	s, store, cleanup := setupTestServer(t)
+	defer cleanup()
+	req := localRequest("POST", "/api/projects", strings.NewReader(`{"name":"`+strings.Repeat("a", (1<<20)+1)+`"}`))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("oversize request accepted: %d", w.Code)
+	}
+	_, total, _ := store.ListProjects("")
+	if total != 0 {
+		t.Fatal("oversize request created a project")
+	}
+}

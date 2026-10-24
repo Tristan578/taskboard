@@ -197,11 +197,15 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 		return s.store.ReportActivity(a.ID, a.ActivityRequest)
 	case "complete_ticket":
 		var a struct {
-			ID       string `json:"id"`
-			Evidence string `json:"evidence"`
+			ID               string `json:"id"`
+			Evidence         string `json:"evidence"`
+			ExpectedRevision *int   `json:"expectedRevision"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return nil, err
+		}
+		if a.ExpectedRevision != nil {
+			return workflow.Complete(context.Background(), s.store, a.ID, a.Evidence, *a.ExpectedRevision)
 		}
 		return workflow.Complete(context.Background(), s.store, a.ID, a.Evidence)
 	case "player2_status":
@@ -308,7 +312,9 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			ID string `json:"id"`
 			models.UpdateTicketRequest
 		}
-		_ = json.Unmarshal(args, &a)
+		if err := json.Unmarshal(args, &a); err != nil {
+			return nil, err
+		}
 		return s.store.UpdateTicket(a.ID, a.UpdateTicketRequest)
 
 	case "move_ticket":
@@ -316,14 +322,22 @@ func (s *MCPServer) callTool(name string, args json.RawMessage) (any, error) {
 			ID string `json:"id"`
 			models.MoveTicketRequest
 		}
-		_ = json.Unmarshal(args, &a)
+		if err := json.Unmarshal(args, &a); err != nil {
+			return nil, err
+		}
 		return s.store.MoveTicket(a.ID, a.MoveTicketRequest)
 
 	case "delete_ticket":
 		var a struct {
-			ID string `json:"id"`
+			ID               string `json:"id"`
+			ExpectedRevision *int   `json:"expectedRevision"`
 		}
-		_ = json.Unmarshal(args, &a)
+		if err := json.Unmarshal(args, &a); err != nil {
+			return nil, err
+		}
+		if a.ExpectedRevision != nil {
+			return map[string]bool{"deleted": true}, s.store.DeleteTicket(a.ID, *a.ExpectedRevision)
+		}
 		return map[string]bool{"deleted": true}, s.store.DeleteTicket(a.ID)
 
 	case "get_board":
@@ -391,7 +405,7 @@ func (s *MCPServer) toolDefinitions() []toolDef {
 	return []toolDef{
 		{Name: "player2_status", Description: "Discover Player2 and sync health before beginning work. List projects to locate your workspace.", InputSchema: jsonSchema{Type: "object"}},
 		{Name: "report_activity", Description: "Claim or heartbeat a ticket using a stable sessionId. Report progress every 5 minutes. Stale after 15 minutes; competing live sessions are rejected.", InputSchema: jsonSchema{Type: "object", Properties: map[string]schemaProp{"id": {Type: "string"}, "agent": {Type: "string"}, "sessionId": {Type: "string"}, "summary": {Type: "string"}}, Required: []string{"id", "agent", "sessionId", "summary"}}},
-		{Name: "complete_ticket", Description: "Verify a merged GitHub PR or successful GitHub deployment in the linked repo before moving to Done. Tests passing alone means Review.", InputSchema: jsonSchema{Type: "object", Properties: map[string]schemaProp{"id": {Type: "string"}, "evidence": {Type: "string"}}, Required: []string{"id", "evidence"}}},
+		{Name: "complete_ticket", Description: "Verify a merged GitHub PR or successful GitHub deployment in the linked repo before moving to Done. Tests passing alone means Review.", InputSchema: jsonSchema{Type: "object", Properties: map[string]schemaProp{"id": {Type: "string"}, "evidence": {Type: "string"}, "expectedRevision": {Type: "integer", Description: "Revision from get_ticket; supply it to reject changes that would overwrite newer work"}}, Required: []string{"id", "evidence"}}},
 		// --- Projects (top-level grouping) ---
 		{
 			Name:        "list_projects",
@@ -559,7 +573,7 @@ func (s *MCPServer) toolDefinitions() []toolDef {
 			Description: "Update ticket properties. Use this to add userStory and acceptanceCriteria to satisfy Strict Mode requirements.",
 			InputSchema: jsonSchema{
 				Type: "object",
-				Properties: map[string]schemaProp{
+				Properties: map[string]schemaProp{"expectedRevision": {Type: "integer", Description: "Revision from get_ticket; supply it to reject changes that would overwrite newer work"},
 					"id":                 {Type: "string", Description: "Ticket ID"},
 					"title":              {Type: "string", Description: "Ticket title"},
 					"description":        {Type: "string", Description: "Description"},
@@ -580,7 +594,7 @@ func (s *MCPServer) toolDefinitions() []toolDef {
 			Description: "Move ticket to a different status column",
 			InputSchema: jsonSchema{
 				Type: "object",
-				Properties: map[string]schemaProp{
+				Properties: map[string]schemaProp{"expectedRevision": {Type: "integer", Description: "Revision from get_ticket; supply it to reject changes that would overwrite newer work"},
 					"id":     {Type: "string", Description: "Ticket ID"},
 					"status": {Type: "string", Description: "Target status", Enum: []string{"todo", "in_progress", "review", "blocked", "done"}},
 				},
@@ -592,7 +606,7 @@ func (s *MCPServer) toolDefinitions() []toolDef {
 			Description: "Delete a ticket",
 			InputSchema: jsonSchema{
 				Type:       "object",
-				Properties: map[string]schemaProp{"id": {Type: "string", Description: "Ticket ID"}},
+				Properties: map[string]schemaProp{"expectedRevision": {Type: "integer", Description: "Revision from get_ticket; supply it to reject changes that would overwrite newer work"}, "id": {Type: "string", Description: "Ticket ID"}},
 				Required:   []string{"id"},
 			},
 		},
