@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -24,20 +25,20 @@ import {
   Users,
   Plus,
 } from "lucide-react";
-import { api, type Ticket, type Project, type Team, type BoardColumn } from "../api/client";
+import { api, type Ticket, type Project, type Team, type BoardColumn, type SyncStatus } from "../api/client";
 import TicketPanel from "../components/TicketPanel";
 import CreateTicketModal from "../components/CreateTicketModal";
 
-const STATUSES = ["todo", "in_progress", "done"];
+const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 const STATUS_LABELS: Record<string, string> = {
   todo: "Todo",
   in_progress: "In Progress",
-  done: "Done",
+  review: "Review", blocked: "Blocked", done: "Done",
 };
 const STATUS_COLORS: Record<string, string> = {
   todo: "bg-slate-500",
   in_progress: "bg-blue-500",
-  done: "bg-green-500",
+  review: "bg-violet-500", blocked: "bg-amber-500", done: "bg-green-500",
 };
 
 const PRIORITY_CONFIG: Record<string, { color: string; icon: typeof ArrowUp }> = {
@@ -150,6 +151,11 @@ function TicketCard({
           {new Date(ticket.dueDate).toLocaleDateString()}
         </div>
       )}
+      {ticket.work?.agent && <p className={`text-xs ${ticket.work.stale && ticket.status==="in_progress" ? "text-amber-400" : "text-cyan-400"}`}>{ticket.work.agent} · {ticket.work.stale ? "No recent heartbeat" : "Reported recently"}</p>}
+      {ticket.status==="in_progress" && !ticket.work?.agent && <p className="text-xs text-amber-400">Untracked activity</p>}
+      {ticket.work?.summary && <p className="line-clamp-2 text-xs text-slate-400">{ticket.work.summary}</p>}
+      {ticket.work?.conflict && <p className="text-xs text-amber-400">GitHub conflict · resolve required</p>}
+      {ticket.status==="done" && <p className="text-xs text-slate-400">{ticket.work?.completionUrl ? "Completion verified" : "Legacy · evidence not recorded"}</p>}
       <SubtaskProgress subtasks={ticket.subtasks} />
     </div>
   );
@@ -209,6 +215,8 @@ function Column({
         </h3>
         <span className="text-xs text-slate-600 ml-auto">{tickets.length}</span>
         <button
+          disabled={status === "done"}
+          aria-label={`Add ticket to ${STATUS_LABELS[status]}`}
           onClick={() => onAddTicket(status)}
           className="text-slate-600 hover:text-slate-300 transition-colors"
         >
@@ -249,38 +257,39 @@ export default function Board() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [createForStatus, setCreateForStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [sync, setSync] = useState<SyncStatus | null>(null);
+  const generation = useRef(0);
+  const allTickets = columns.flatMap(c => c.tickets);
+  const stale = allTickets.filter(t => t.status === "in_progress" && (!t.work?.agent || t.work.stale)).length;
+  const conflicts = allTickets.filter(t => t.work?.conflict).length;
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
   );
 
   const loadBoard = useCallback(async () => {
+    const request = ++generation.current;
     try {
-      const board = await api.board.get(selectedProject || undefined);
-      setColumns(board.columns || []);
-    } catch {
-      setColumns(
-        STATUSES.map((status) => ({ status, tickets: [] }))
-      );
-    }
-    setLoading(false);
+      const [board, health] = await Promise.all([api.board.get(selectedProject || undefined), api.sync.status()]);
+      if(request !== generation.current) return;
+      setColumns(board.columns || []); setSync(health); setError("");
+    } catch(e) {
+      if(request === generation.current) setError(e instanceof Error ? e.message : "Board unavailable");
+    } finally { if(request === generation.current) setLoading(false); }
   }, [selectedProject]);
 
   useEffect(() => {
-    api.projects.list().then(setProjects).catch(() => setProjects([]));
-    api.teams.list().then(setTeams).catch(() => setTeams([]));
+    api.projects.list().then(setProjects).catch(e => setError(String(e)));
+    api.teams.list().then(setTeams).catch(e => setError(String(e)));
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    if (mounted) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadBoard();
-    }
-    return () => {
-      mounted = false;
-    };
-  }, [loadBoard]);
+    if(!activeTicket) void loadBoard();
+    const timer = window.setInterval(() => { if(!activeTicket) void loadBoard(); }, 5000);
+    return () => { window.clearInterval(timer); };
+  }, [loadBoard, activeTicket]);
 
   const getColumnTickets = (status: string) =>
     columns.find((c) => c.status === status)?.tickets || [];
@@ -301,6 +310,7 @@ export default function Board() {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
+    generation.current++;
     const ticket = findTicketById(event.active.id);
     setActiveTicket(ticket ?? null);
   };
@@ -335,7 +345,7 @@ export default function Board() {
     const { active, over } = event;
     setActiveTicket(null);
 
-    if (!over) return;
+    if (!over) { void loadBoard(); return; }
 
     const targetStatus = STATUSES.includes(over.id as string)
       ? (over.id as string)
@@ -345,8 +355,8 @@ export default function Board() {
 
     try {
       await api.tickets.move(active.id as string, targetStatus);
-    } catch {
-      loadBoard();
+    } catch(e) {
+      await loadBoard(); setError(e instanceof Error ? e.message : "Move failed");
     }
   };
 
@@ -373,7 +383,7 @@ export default function Board() {
   return (
     <div className="h-full flex flex-col">
       <header className="shrink-0 flex items-center justify-between px-6 h-14 border-b border-slate-800">
-        <h1 className="text-lg font-semibold text-white">Board</h1>
+        <h1 className="text-lg font-semibold text-white">Agent workspace</h1>
         <select
           value={selectedProject}
           onChange={(e) => setSelectedProject(e.target.value)}
@@ -388,6 +398,20 @@ export default function Board() {
         </select>
       </header>
 
+      <div className="border-b border-slate-800 bg-slate-950 px-6 py-4 space-y-2">
+       <div className="flex flex-wrap gap-4 text-xs text-slate-400">
+        <span className="text-cyan-400">● Updates every 5 seconds</span>
+        <span>{allTickets.length} tasks</span><span className={stale ? "text-amber-400" : ""}>{stale} stale / untracked</span>
+        <span className={conflicts ? "text-amber-400" : ""}>{conflicts} conflicts</span>
+        <span>{sync?.pendingJobs ?? "…"} sync pending · {sync?.failedJobs ?? "…"} failed</span>
+        {sync?.githubConfigured === false && <span className="text-amber-400">GitHub token not configured</span>}
+        {!!sync?.failedJobs && <button onClick={() => api.sync.retry().then(loadBoard).catch(e=>setError(String(e)))} className="underline">Retry failed sync</button>}
+       </div>
+       <p className="text-xs text-slate-500">Agents report progress through MCP or CLI. No heartbeat for 15 minutes flags stale work. Done means verified merge or deployment.</p>
+       {!loading && !error && allTickets.length===0 && <div className="rounded-lg border border-slate-700 p-3 text-sm text-slate-300">Connect your agent: <code className="text-cyan-300">player2-kanban agent-config install all</code> · configure MCP with <code>player2-kanban mcp</code>. Create a project to start tracking work.</div>}
+       {sync?.lastError && <p className="text-xs text-amber-400">Last sync error: {sync.lastError}</p>}
+       {error && <div role="alert" className="text-sm text-red-400">{error} <button onClick={()=>void loadBoard()} className="underline">Retry</button></div>}
+      </div>
       <div className="flex-1 overflow-x-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center h-full text-slate-600">
@@ -400,6 +424,7 @@ export default function Board() {
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => {setActiveTicket(null); void loadBoard();}}
           >
             <div className="flex gap-6 h-full">
               {STATUSES.map((status) => (

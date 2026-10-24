@@ -1,0 +1,122 @@
+{
+  "stories": [
+    {
+      "id": "P2-1",
+      "title": "Shared workflow and local boundary",
+      "objective": "Enforce all interfaces and verify completion",
+      "criticality": "critical",
+      "dependencies": [],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Strict-mode bypass fails through MCP and CLI"
+        },
+        {
+          "type": "negative",
+          "text": "Foreign browser origin cannot open terminal"
+        },
+        {
+          "type": "boundary",
+          "text": "Merged or successful deployment evidence permits Done"
+        }
+      ],
+      "test_plan": [
+        "Go workflow, MCP, HTTP and evidence tests"
+      ],
+      "observability": [
+        "validation errors",
+        "completion evidence"
+      ],
+      "manual_steps": [
+        "Review PR; validate native OS execution and live GitHub before publishing"
+      ],
+      "agent_constraints": [
+        "Keep existing user data; no direct main push or publication"
+      ],
+      "migration": "Additive migration 010; keep historical Done with legacy evidence label",
+      "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    },
+    {
+      "id": "P2-2",
+      "title": "Recoverable synchronization",
+      "objective": "Preserve both versions and reliable retry",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Concurrent edits create a conflict"
+        },
+        {
+          "type": "negative",
+          "text": "Failed closure retains tombstone"
+        },
+        {
+          "type": "boundary",
+          "text": "Unchanged sync does not rewrite remote"
+        }
+      ],
+      "test_plan": [
+        "HTTP fake GitHub plus real SQLite integration tests"
+      ],
+      "observability": [
+        "conflict snapshots",
+        "failed jobs",
+        "last successful sync"
+      ],
+      "manual_steps": [
+        "Review PR; validate native OS execution and live GitHub before publishing"
+      ],
+      "agent_constraints": [
+        "Keep existing user data; no direct main push or publication"
+      ],
+      "migration": "Additive migration 010; keep historical Done with legacy evidence label",
+      "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    },
+    {
+      "id": "P2-3",
+      "title": "Visible agent activity and packaging",
+      "objective": "Expose freshness and make installation discoverable",
+      "criticality": "critical",
+      "dependencies": [
+        "P2-1",
+        "P2-2"
+      ],
+      "acceptance_criteria": [
+        {
+          "type": "positive",
+          "text": "Heartbeat appears in board data"
+        },
+        {
+          "type": "negative",
+          "text": "Live session takeover fails and stale takeover succeeds"
+        },
+        {
+          "type": "boundary",
+          "text": "Missing binary fails installation"
+        }
+      ],
+      "test_plan": [
+        "Go lease tests",
+        "React component tests",
+        "Node installer tests",
+        "platform CI"
+      ],
+      "observability": [
+        "stale and untracked warnings",
+        "installer failures",
+        "server readiness"
+      ],
+      "manual_steps": [
+        "Review PR; validate native OS execution and live GitHub before publishing"
+      ],
+      "agent_constraints": [
+        "Keep existing user data; no direct main push or publication"
+      ],
+      "migration": "Additive migration 010; keep historical Done with legacy evidence label",
+      "rollback": "Restore pre-upgrade SQLite backup and prior binary"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"os"
@@ -18,9 +19,10 @@ type agentTarget struct {
 }
 
 var agentTargets = map[string]agentTarget{
+	"devin": {path: ".devin/player2.md", dir: ".devin"},
 	"cursor": {
-		path: ".cursor/rules/player2.mdc",
-		dir:  ".cursor/rules",
+		path:       ".cursor/rules/player2.mdc",
+		dir:        ".cursor/rules",
 		preContent: "---\ndescription: Mandatory workflow for Player2 Kanban\nglobs: **/*\nalwaysApply: true\n---\n\n",
 	},
 	"claude": {
@@ -101,12 +103,35 @@ func installAgentConfig(name string, target agentTarget, baseContent []byte) err
 	}
 
 	content := baseContent
-	if target.preContent != "" {
-		content = append([]byte(target.preContent), baseContent...)
-	}
 
-	// #nosec G306
-	if err := os.WriteFile(target.path, content, 0600); err != nil {
+	const begin = "<!-- player2:start -->"
+	const end = "<!-- player2:end -->"
+	existing, err := os.ReadFile(target.path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	block := append([]byte(begin+"\n"), content...)
+	block = append(block, []byte("\n"+end+"\n")...)
+	start := bytes.Index(existing, []byte(begin))
+	finish := bytes.Index(existing, []byte(end))
+	var output []byte
+	if start >= 0 && finish >= start {
+		output = append(output, existing[:start]...)
+		output = append(output, block...)
+		output = append(output, existing[finish+len(end):]...)
+	} else if start >= 0 || finish >= 0 {
+		return fmt.Errorf("incomplete Player2 block in %s; repair markers before installing", target.path)
+	} else {
+		if len(existing) == 0 {
+			output = append(output, []byte(target.preContent)...)
+		}
+		output = append(output, existing...)
+		if len(existing) > 0 {
+			output = append(output, []byte("\n\n")...)
+		}
+		output = append(output, block...)
+	}
+	if err := os.WriteFile(target.path, output, 0600); err != nil {
 		return fmt.Errorf("writing %s config: %w", name, err)
 	}
 

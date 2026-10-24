@@ -1,57 +1,35 @@
-# Player2 Kanban: Agent Lifecycle Protocol
+# Player2 Kanban: Observable Agent Work
 
-You are an AI agent assisting a developer. You MUST follow this lifecycle for every task.
+This managed block supersedes older Player2 workflow instructions.
 
-## The Player2 Loop
+Before implementation, call `player2_status` through MCP or `player2-kanban status`.
+List projects and tickets, select the matching task, or create it. If the browser
+is offline, run `player2-kanban start`. Use the same `--db` for every process.
+If Player2 is unavailable, tell the user explicitly; never imply work is tracked.
 
-### 1. Pre-Flight (Verify & Sync)
-Before writing code:
-- **Find or create a ticket:**
-  ```bash
-  player2-kanban ticket list --project <project_id>
-  player2-kanban ticket create --project <project_id> --title "..." --priority medium
-  ```
-- **Check sync status:** `player2-kanban project sync-status`
-- **Sync if needed:** `player2-kanban project sync <project_id> --async`
+1. Find/create a ticket. Strict projects require a user story and acceptance
+   criteria for published work. Ideas may remain drafts in Todo.
+2. Claim it with `report_activity` (id, agent, sessionId, summary), or:
+   `player2-kanban activity <id> --agent Codex --session <unique-run-id> --summary "Starting investigation"`
+3. Move it using `move_ticket` or `player2-kanban ticket move <id> --status in_progress`.
+4. Send activity with the SAME sessionId at least every five minutes and on each
+   meaningful milestone. After 15 minutes the board flags missing activity.
+   Never take over another active session; stale sessions may be reclaimed.
+5. Move to `blocked` with a progress summary describing what is needed, or
+   `review` when implementation/tests are ready for review. Tests passing is not Done.
+6. After merge or deployment, call `complete_ticket` with id/evidence, or
+   `player2-kanban ticket complete <id> --evidence https://github.com/OWNER/REPO/pull/NUMBER`.
+   Player2 verifies the merge. GitHub deployment API URLs are also supported;
+   the latest deployment status must be success. Use evidence for THIS task.
+7. Check sync health. Surface conflicts or failed sync to the user. Never say
+   GitHub is current when sync is pending or failed.
 
-### 2. Strict Mode Gate
-If the project uses **Strict Mode** (`player2-kanban project list` shows strict=true), non-draft tickets require:
-- **User Story** and **Acceptance Criteria** before work begins.
-
-Create tickets with these fields:
-```bash
-player2-kanban ticket create \
-  --project <project_id> \
-  --title "Add SSO login" \
-  --user-story "As a user I want to log in with SSO So that I don't need another password" \
-  --acceptance-criteria "Given a valid SSO session When I visit /login Then I am authenticated" \
-  --priority high
+MCP stdio setup (configure in your agent client's MCP settings):
+```json
+{"mcpServers":{"player2":{"command":"player2-kanban","args":["mcp"]}}}
 ```
-
-Or create a draft first and fill in details later:
-```bash
-player2-kanban ticket create --project <project_id> --title "Investigate issue" --draft
-```
-
-### 3. Execution
-- **Start work:** `player2-kanban ticket move <ticket_id> --status in_progress`
-- **Track subtasks:** `player2-kanban ticket subtask toggle <subtask_id>`
-
-### 4. Completion
-When tests pass and the task is done:
-- **Mark done:** `player2-kanban ticket move <ticket_id> --status done`
-- **Sync:** `player2-kanban project sync <project_id> --async`
-- **Notify the user** that the ticket is closed and synced.
-
-## MCP Integration
-If your IDE supports MCP (Model Context Protocol), connect to Player2 Kanban for direct tool access:
-```bash
-player2-kanban mcp
-```
-MCP provides 20+ tools for managing projects, tickets, subtasks, and boards — prefer MCP tools over CLI commands when available.
-
-## Rules
-- **Never bypass Strict Mode** by leaving production-ready work in Draft status.
-- **Always move tickets through statuses** — don't skip from todo to done.
-- **Sync before and after** significant work to keep GitHub Issues current.
-- **Use the ticket ID** from `ticket list` output for all move/update/subtask operations.
+Commands and MCP share the local database, including when the browser is closed.
+The browser process performs background GitHub reconciliation and needs
+GITHUB_TOKEN in its environment. Remote/cloud agents need an explicitly
+configured connection to the same workspace; installing a rule alone does not
+connect them. Devin instructions must be added to the agent's configured knowledge.

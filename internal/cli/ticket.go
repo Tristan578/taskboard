@@ -2,8 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/spf13/cobra"
 )
 
 func ticketCommands() *cobra.Command {
@@ -12,6 +12,7 @@ func ticketCommands() *cobra.Command {
 		Short: "Manage tickets",
 	}
 
+	cmd.AddCommand(completeCommand())
 	var projectID, status, priority string
 	listCmd := &cobra.Command{
 		Use:   "list",
@@ -41,7 +42,7 @@ func ticketCommands() *cobra.Command {
 		},
 	}
 	listCmd.Flags().StringVar(&projectID, "project", "", "filter by project ID")
-	listCmd.Flags().StringVar(&status, "status", "", "filter by status (todo|in_progress|done)")
+	listCmd.Flags().StringVar(&status, "status", "", "filter by status (todo|in_progress|review|blocked|done)")
 	listCmd.Flags().StringVar(&priority, "priority", "", "filter by priority (urgent|high|medium|low)")
 
 	var createProject, createPriority, createDue, createTeam string

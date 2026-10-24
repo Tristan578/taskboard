@@ -23,8 +23,8 @@ type RateLimitInfo struct {
 
 // lastRateLimit stores the most recent rate limit info across all API calls.
 var (
-	lastRateLimit   *RateLimitInfo
-	rateLimitMu     sync.RWMutex
+	lastRateLimit *RateLimitInfo
+	rateLimitMu   sync.RWMutex
 )
 
 // GetLastRateLimit returns the most recently observed GitHub rate limit info.
@@ -193,9 +193,7 @@ func (c *Client) CreateIssue(ctx context.Context, owner, repo string, title, bod
 	if err != nil {
 		return 0, err
 	}
-	if rlErr := checkRateLimit(resp); rlErr != nil {
-		return issue.GetNumber(), rlErr
-	}
+	storeRateLimit(resp) // A successful write must not become a retryable failure.
 	return issue.GetNumber(), nil
 }
 
@@ -209,7 +207,8 @@ func (c *Client) UpdateIssue(ctx context.Context, owner, repo string, number int
 	if err != nil {
 		return err
 	}
-	return checkRateLimit(resp)
+	storeRateLimit(resp)
+	return nil
 }
 
 func ParseRepo(repoStr string) (owner, repo string, err error) {

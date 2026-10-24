@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -10,13 +11,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	"github.com/gorilla/websocket"
 	"github.com/Tristan578/taskboard/internal/db"
 	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/Tristan578/taskboard/internal/workflow"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/websocket"
+	"os"
 )
 
 type Server struct {
@@ -36,9 +38,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListenAndServe(port int) error {
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	slog.Info("server started", "port", port)
-	
+
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      s.router,
@@ -46,7 +48,7 @@ func (s *Server) ListenAndServe(port int) error {
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	
+
 	return srv.ListenAndServe()
 }
 
@@ -97,13 +99,7 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(requestLogger)
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type"},
-		AllowCredentials: false,
-		MaxAge:           300,
-	}))
+	r.Use(localBoundary)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/projects", func(r chi.Router) {
@@ -128,6 +124,9 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 			r.Get("/{id}", s.getTicket)
 			r.Put("/{id}", s.updateTicket)
 			r.Post("/{id}/move", s.moveTicket)
+			r.Post("/{id}/activity", s.reportActivity)
+			r.Post("/{id}/complete", s.completeTicket)
+			r.Post("/{id}/resolve", s.resolveConflict)
 			r.Delete("/{id}", s.deleteTicket)
 			r.Post("/{id}/subtasks", s.addSubtask)
 		})
@@ -148,6 +147,7 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 		r.Get("/terminal/ws", s.handleTerminalWS)
 		r.Get("/health", s.healthCheck)
 		r.Get("/sync/status", s.syncStatus)
+		r.Post("/sync/retry", s.retrySync)
 	})
 
 	if webFS != nil {
@@ -436,24 +436,10 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Strict mode validation (only if not a draft)
-	proj, err := s.store.GetProject(req.ProjectID)
-	if err == nil && proj != nil && proj.Strict && !req.IsDraft {
-		if req.UserStory == "" || req.AcceptanceCriteria == "" {
-			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: Non-draft tickets require a 'User Story' and 'Acceptance Criteria' (Gherkin).")
-			return
-		}
-	}
-
 	t, err := s.store.CreateTicket(req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
-	}
-
-	// Queue sync job if linked AND not a draft
-	if proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
-		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusCreated, t)
@@ -477,39 +463,14 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Strict mode validation
-	var proj *models.Project
-	proj, err = s.store.GetProject(existing.ProjectID)
-	
-	newIsDraft := existing.IsDraft
-	if req.IsDraft != nil { newIsDraft = *req.IsDraft }
-
-	if err == nil && proj != nil && proj.Strict && !newIsDraft {
-		// Check if the update is trying to clear required fields or if they are already empty
-		us := existing.UserStory
-		if req.UserStory != nil { us = *req.UserStory }
-		ac := existing.AcceptanceCriteria
-		if req.AcceptanceCriteria != nil { ac = *req.AcceptanceCriteria }
-
-		if us == "" || ac == "" {
-			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: Non-draft tickets require a 'User Story' and 'Acceptance Criteria' (Gherkin).")
-			return
-		}
-	}
-
 	t, err := s.store.UpdateTicket(id, req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	if t == nil {
 		writeError(w, http.StatusNotFound, "ticket not found")
 		return
-	}
-
-	// Queue sync job if linked AND not a draft
-	if err == nil && proj != nil && proj.GitHubRepo != "" && !t.IsDraft {
-		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -537,27 +498,10 @@ func (s *Server) moveTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If moving to a non-draft state in a strict project, validate
-	proj, err := s.store.GetProject(existing.ProjectID)
-	if err == nil && proj != nil && proj.Strict && existing.IsDraft {
-		if existing.UserStory == "" || existing.AcceptanceCriteria == "" {
-			writeError(w, http.StatusBadRequest, "Strict Mode Enforcement: You must provide a 'User Story' and 'Acceptance Criteria' before moving this ticket out of Draft status.")
-			return
-		}
-	}
-
 	t, err := s.store.MoveTicket(id, req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
-	}
-
-	// Queue sync job if linked AND moving out of draft
-	if err == nil && proj != nil && proj.GitHubRepo != "" && existing.IsDraft {
-		// Auto-convert to non-draft on move
-		isDraft := false
-		_, _ = s.store.UpdateTicket(t.ID, models.UpdateTicketRequest{IsDraft: &isDraft})
-		_ = s.store.QueueSyncJob(proj.ID, t.ID, "full_sync", nil)
 	}
 
 	writeJSON(w, http.StatusOK, t)
@@ -726,7 +670,7 @@ func (s *Server) getBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: sameOrigin,
 }
 
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
@@ -741,6 +685,7 @@ func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]any{
+		"name": "player2-kanban", "pid": os.Getpid(),
 		"status": status,
 		"uptime": time.Since(s.startedAt).String(),
 	})
@@ -754,9 +699,11 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"pendingJobs": ss.PendingJobs,
-		"failedJobs":  ss.FailedJobs,
-		"lastSyncAt":  ss.LastSyncAt,
+		"githubConfigured": os.Getenv("GITHUB_TOKEN") != "",
+		"lastError":        ss.LastError,
+		"pendingJobs":      ss.PendingJobs,
+		"failedJobs":       ss.FailedJobs,
+		"lastSyncAt":       ss.LastSyncAt,
 	}
 
 	if rl := github.GetLastRateLimit(); rl != nil {
@@ -764,4 +711,68 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) reportActivity(w http.ResponseWriter, r *http.Request) {
+	var a models.ActivityRequest
+	if err := decodeJSON(r, &a); err != nil {
+		writeError(w, 400, "invalid JSON")
+		return
+	}
+	t, err := s.store.ReportActivity(chi.URLParam(r, "id"), a)
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	writeJSON(w, 200, t)
+}
+func (s *Server) completeTicket(w http.ResponseWriter, r *http.Request) {
+	var a struct {
+		Evidence string `json:"evidence"`
+	}
+	if err := decodeJSON(r, &a); err != nil {
+		writeError(w, 400, "invalid JSON")
+		return
+	}
+	t, err := workflow.Complete(r.Context(), s.store, chi.URLParam(r, "id"), a.Evidence)
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	writeJSON(w, 200, t)
+}
+func (s *Server) resolveConflict(w http.ResponseWriter, r *http.Request) {
+	var a struct {
+		Choice string `json:"choice"`
+	}
+	if err := decodeJSON(r, &a); err != nil {
+		writeError(w, 400, "invalid JSON")
+		return
+	}
+	if os.Getenv("GITHUB_TOKEN") == "" {
+		writeError(w, 409, "GITHUB_TOKEN is not configured")
+		return
+	}
+	err := github.ResolveConflict(r.Context(), github.NewClient(r.Context(), os.Getenv("GITHUB_TOKEN")), s.store, chi.URLParam(r, "id"), a.Choice)
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"resolved": true})
+}
+func (s *Server) retrySync(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.RetryFailedSyncJobs(); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"queued": true})
+}
+
+func writeStoreError(w http.ResponseWriter, err error) {
+	var invalid *db.ValidationError
+	if errors.As(err, &invalid) {
+		writeError(w, 400, err.Error())
+	} else {
+		writeError(w, 500, err.Error())
+	}
 }

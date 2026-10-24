@@ -28,48 +28,74 @@ type mockStore struct {
 	deleted []models.Ticket
 }
 
-func (m *mockStore) GetProject(id string) (*models.Project, error) { return m.project, nil }
-func (m *mockStore) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error) { return m.tickets, len(m.tickets), nil }
+func (m *mockStore) GetProject(id string) (*models.Project, error) { if id=="none"{return nil,nil};return m.project, nil }
+func (m *mockStore) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error) {
+	return m.tickets, len(m.tickets), nil
+}
 func (m *mockStore) GetTicket(id string) (*models.Ticket, error) {
 	for _, t := range m.tickets {
-		if t.ID == id { return &t, nil }
+		if t.ID == id {
+			return &t, nil
+		}
 	}
 	return nil, nil
 }
-func (m *mockStore) UpdateTicket(id string, req models.UpdateTicketRequest) (*models.Ticket, error) { return nil, nil }
-func (m *mockStore) CreateTicket(req models.CreateTicketRequest) (*models.Ticket, error) { 
-	if m.project != nil && m.project.ID == "create_err" { return nil, fmt.Errorf("err") }
-	return &models.Ticket{ID: "new"}, nil 
+func (m *mockStore) UpdateTicket(id string, req models.UpdateTicketRequest) (*models.Ticket, error) {
+	return nil, nil
 }
-func (m *mockStore) UpdateProject(id string, req models.UpdateProjectRequest) (*models.Project, error) { return nil, nil }
-func (m *mockStore) ListDeletedTickets(id string) ([]models.Ticket, error) { 
-	if m.project != nil && m.project.ID == "p_err" { return nil, fmt.Errorf("err") }
-	return m.deleted, nil 
+func (m *mockStore) CreateTicket(req models.CreateTicketRequest) (*models.Ticket, error) {
+	if m.project != nil && m.project.ID == "create_err" {
+		return nil, fmt.Errorf("err")
+	}
+	return &models.Ticket{ID: "new"}, nil
+}
+func (m *mockStore) UpdateProject(id string, req models.UpdateProjectRequest) (*models.Project, error) {
+	return nil, nil
+}
+func (m *mockStore) ListDeletedTickets(id string) ([]models.Ticket, error) {
+	if m.project != nil && m.project.ID == "p_err" {
+		return nil, fmt.Errorf("err")
+	}
+	return m.deleted, nil
 }
 func (m *mockStore) PurgeDeletedTickets(id string) error { return nil }
 func (m *mockStore) GetPendingSyncJobs() ([]models.SyncJob, error) {
-	if m.project != nil && m.project.ID == "job_err" { return nil, fmt.Errorf("err") }
+	if m.project != nil && m.project.ID == "job_err" {
+		return nil, fmt.Errorf("err")
+	}
 	return []models.SyncJob{{ID: "j1", ProjectID: "p1", Action: "full_sync"}}, nil
 }
-func (m *mockStore) UpdateSyncJobStatus(id, status string, attempts int, lastError string) error { return nil }
-func (m *mockStore) UpdateSyncJobRetry(id string, attempts int, lastError string, nextRetryAt time.Time) error { return nil }
-func (m *mockStore) ListLabels() ([]models.Label, error) { return nil, nil }
+func (m *mockStore) UpdateSyncJobStatus(id, status string, attempts int, lastError string) error {
+	return nil
+}
+func (m *mockStore) UpdateSyncJobRetry(id string, attempts int, lastError string, nextRetryAt time.Time) error {
+	return nil
+}
+func (m *mockStore) ListLabels() ([]models.Label, error)       { return nil, nil }
 func (m *mockStore) GetLabel(id string) (*models.Label, error) { return nil, nil }
-func (m *mockStore) CreateLabel(req models.CreateLabelRequest) (*models.Label, error) { return nil, nil }
-func (m *mockStore) UpdateLabel(id string, req models.UpdateLabelRequest) (*models.Label, error) { return nil, nil }
-func (m *mockStore) DeleteLabel(id string) error { return nil }
+func (m *mockStore) CreateLabel(req models.CreateLabelRequest) (*models.Label, error) {
+	return nil, nil
+}
+func (m *mockStore) UpdateLabel(id string, req models.UpdateLabelRequest) (*models.Label, error) {
+	return nil, nil
+}
+func (m *mockStore) DeleteLabel(id string) error                   { return nil }
 func (m *mockStore) GetSubtask(id string) (*models.Subtask, error) { return nil, nil }
-func (m *mockStore) AddSubtask(ticketID string, req models.CreateSubtaskRequest) (*models.Subtask, error) { return nil, nil }
-func (m *mockStore) ToggleSubtask(id string) (*models.Subtask, error) { return nil, nil }
-func (m *mockStore) DeleteSubtask(id string) error { return nil }
-func (m *mockStore) GetBoard(projectID string) (*models.Board, error) { return nil, nil }
-func (m *mockStore) ListTeams() ([]models.Team, error) { return nil, nil }
-func (m *mockStore) GetTeam(id string) (*models.Team, error) { return nil, nil }
+func (m *mockStore) AddSubtask(ticketID string, req models.CreateSubtaskRequest) (*models.Subtask, error) {
+	return nil, nil
+}
+func (m *mockStore) ToggleSubtask(id string) (*models.Subtask, error)              { return nil, nil }
+func (m *mockStore) DeleteSubtask(id string) error                                 { return nil }
+func (m *mockStore) GetBoard(projectID string) (*models.Board, error)              { return nil, nil }
+func (m *mockStore) ListTeams() ([]models.Team, error)                             { return nil, nil }
+func (m *mockStore) GetTeam(id string) (*models.Team, error)                       { return nil, nil }
 func (m *mockStore) CreateTeam(req models.CreateTeamRequest) (*models.Team, error) { return nil, nil }
-func (m *mockStore) UpdateTeam(id string, req models.UpdateTeamRequest) (*models.Team, error) { return nil, nil }
+func (m *mockStore) UpdateTeam(id string, req models.UpdateTeamRequest) (*models.Team, error) {
+	return nil, nil
+}
 func (m *mockStore) DeleteTeam(id string) error { return nil }
-func (m *mockStore) ClearData() error { return nil }
-func (m *mockStore) Close() error { return nil }
+func (m *mockStore) ClearData() error           { return nil }
+func (m *mockStore) Close() error               { return nil }
 
 func TestSyncProject_Full(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,18 +108,18 @@ func TestSyncProject_Full(t *testing.T) {
 							"nodes": []interface{}{
 								map[string]interface{}{
 									"number": 1, "title": "GH Newer", "body": "B", "state": "OPEN",
-									"labels": map[string]interface{}{"nodes": []interface{}{}},
-									"updatedAt": "2027-01-01T00:00:00Z", 
+									"labels":    map[string]interface{}{"nodes": []interface{}{}},
+									"updatedAt": "2027-01-01T00:00:00Z",
 								},
 								map[string]interface{}{
 									"number": 2, "title": "Local Newer", "body": "B", "state": "OPEN",
-									"labels": map[string]interface{}{"nodes": []interface{}{}},
-									"updatedAt": "2020-01-01T00:00:00Z", 
+									"labels":    map[string]interface{}{"nodes": []interface{}{}},
+									"updatedAt": "2020-01-01T00:00:00Z",
 								},
 								map[string]interface{}{
 									"number": 3, "title": "Only on GH", "body": "B", "state": "OPEN",
-									"labels": map[string]interface{}{"nodes": []interface{}{}},
-									"updatedAt": "2025-01-01T00:00:00Z", 
+									"labels":    map[string]interface{}{"nodes": []interface{}{}},
+									"updatedAt": "2025-01-01T00:00:00Z",
 								},
 							},
 							"pageInfo": map[string]interface{}{"hasNextPage": false},
@@ -112,13 +138,13 @@ func TestSyncProject_Full(t *testing.T) {
 	store := &mockStore{
 		project: &models.Project{ID: "p1", GitHubRepo: "o/r"},
 		tickets: []models.Ticket{
-			{ID: "t1", GitHubIssueNumber: &n1, UpdatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}, 
+			{ID: "t1", GitHubIssueNumber: &n1, UpdatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
 			{ID: "t2", GitHubIssueNumber: &n2, UpdatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 			{ID: "t4", GitHubIssueNumber: nil, UpdatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 		},
 		deleted: []models.Ticket{{ID: "d1", GitHubIssueNumber: intPtr(123)}},
 	}
-	
+
 	client := NewClientWithURLs(context.Background(), "fake", ts.URL, ts.URL)
 	_ = SyncProject(context.Background(), client, store, "p1")
 }
@@ -126,12 +152,20 @@ func TestSyncProject_Full(t *testing.T) {
 func TestSyncProject_Errors(t *testing.T) {
 	s := &mockStore{project: &models.Project{ID: "p1", GitHubRepo: "o/r"}}
 	client := NewClient(context.Background(), "f")
-	if SyncProject(context.Background(), nil, s, "p1") == nil { t.Errorf("1") }
-	if SyncProject(context.Background(), client, s, "none") == nil { t.Errorf("2") }
+	if SyncProject(context.Background(), nil, s, "p1") == nil {
+		t.Errorf("1")
+	}
+	if SyncProject(context.Background(), client, s, "none") == nil {
+		t.Errorf("2")
+	}
 	s.project.GitHubRepo = ""
-	if SyncProject(context.Background(), client, s, "p1") != nil { t.Errorf("3") }
+	if SyncProject(context.Background(), client, s, "p1") != nil {
+		t.Errorf("3")
+	}
 	s.project.GitHubRepo = "invalid"
-	if SyncProject(context.Background(), client, s, "p1") == nil { t.Errorf("4") }
+	if SyncProject(context.Background(), client, s, "p1") == nil {
+		t.Errorf("4")
+	}
 }
 
 func TestSyncProject_REST_Failures(t *testing.T) {
@@ -145,8 +179,8 @@ func TestSyncProject_REST_Failures(t *testing.T) {
 							"nodes": []interface{}{
 								map[string]interface{}{
 									"number": n1, "title": "T", "body": "B", "state": "OPEN",
-									"labels": map[string]interface{}{"nodes": []interface{}{}},
-									"updatedAt": "2020-01-01T00:00:00Z", 
+									"labels":    map[string]interface{}{"nodes": []interface{}{}},
+									"updatedAt": "2020-01-01T00:00:00Z",
 								},
 							},
 							"pageInfo": map[string]interface{}{"hasNextPage": false},
@@ -200,13 +234,13 @@ func TestSyncProject_MissingAndCreateFail(t *testing.T) {
 						"nodes": []interface{}{
 							map[string]interface{}{
 								"number": n1, "title": "T1", "body": "B", "state": "OPEN",
-								"labels": map[string]interface{}{"nodes": []interface{}{}},
-								"updatedAt": "2020-01-01T00:00:00Z", 
+								"labels":    map[string]interface{}{"nodes": []interface{}{}},
+								"updatedAt": "2020-01-01T00:00:00Z",
 							},
 							map[string]interface{}{
 								"number": n2, "title": "T2", "body": "B", "state": "OPEN",
-								"labels": map[string]interface{}{"nodes": []interface{}{}},
-								"updatedAt": "2020-01-01T00:00:00Z", 
+								"labels":    map[string]interface{}{"nodes": []interface{}{}},
+								"updatedAt": "2020-01-01T00:00:00Z",
 							},
 						},
 						"pageInfo": map[string]interface{}{"hasNextPage": false},
@@ -233,10 +267,10 @@ func TestWorker_Full(t *testing.T) {
 	s := &mockStore{project: &models.Project{ID: "p1", GitHubRepo: "o/r"}}
 	client := NewClient(context.Background(), "f")
 	worker := NewWorker(s, client)
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	worker.Start(ctx) 
+	worker.Start(ctx)
 
 	worker.processJobs(context.Background())
 	_ = worker.executeAction(context.Background(), models.SyncJob{Action: "full_sync", ProjectID: "p1"})
@@ -249,37 +283,61 @@ func TestWorker_Full(t *testing.T) {
 
 func TestParseRepo_Errors(t *testing.T) {
 	_, _, err := ParseRepo("not-a-repo")
-	if err == nil { t.Errorf("1") }
+	if err == nil {
+		t.Errorf("1")
+	}
 }
 
 func TestFormatIssueBody(t *testing.T) {
 	ticket := &models.Ticket{UserStory: "US", LexoRank: "LR"}
 	body := FormatIssueBody("desc", ticket)
-	if find(body, "player2-metadata") == -1 { t.Errorf("meta missing") }
+	if find(body, "player2-metadata") == -1 {
+		t.Errorf("meta missing")
+	}
 }
 
 func TestParseIssueBody(t *testing.T) {
 	body := "desc\n\n<!-- player2-metadata:eyJ1cyI6IlVTIiwiYWMiOiJBQyJ9 -->"
 	d, m := ParseIssueBody(body)
-	if d != "desc" || m.UserStory != "US" { t.Errorf("parse fail") }
+	if d != "desc" || m.UserStory != "US" {
+		t.Errorf("parse fail")
+	}
 
 	legacy := "---\nplayer2:\n  us: US\n---\ndesc"
 	d, _ = ParseIssueBody(legacy)
-	if d != "desc" { t.Errorf("legacy fail") }
+	if d != legacy {
+		t.Errorf("legacy frontmatter must be preserved")
+	}
 }
 
 func TestMappings(t *testing.T) {
-	if mapGHStateToStatus("CLOSED", nil) != "done" { t.Errorf("1") }
-	if mapGHStateToStatus("OPEN", []string{"in-progress"}) != "in_progress" { t.Errorf("2") }
-	if mapGHStateToStatus("OPEN", nil) != "todo" { t.Errorf("3") }
-	if mapStatusToGHState("done") != "closed" { t.Errorf("4") }
-	if mapStatusToGHState("todo") != "open" { t.Errorf("5") }
+	if mapGHStateToStatus("CLOSED", nil) != "review" {
+		t.Errorf("1")
+	}
+	if mapGHStateToStatus("OPEN", []string{"in-progress"}) != "in_progress" {
+		t.Errorf("2")
+	}
+	if mapGHStateToStatus("OPEN", nil) != "todo" {
+		t.Errorf("3")
+	}
+	if mapStatusToGHState("done") != "closed" {
+		t.Errorf("4")
+	}
+	if mapStatusToGHState("todo") != "open" {
+		t.Errorf("5")
+	}
 }
 
 func TestStripMetadata(t *testing.T) {
-	if stripMetadata("h") != "h" { t.Errorf("1") }
-	if stripMetadata("---\nplayer2:\n  us: 1\n---\nd") != "d" { t.Errorf("2") }
-	if stripMetadata("d\n\n<!-- player2-metadata:a -->") != "d" { t.Errorf("3") }
+	if stripMetadata("h") != "h" {
+		t.Errorf("1")
+	}
+	if stripMetadata("---\nplayer2:\n  us: 1\n---\nd") != "---\nplayer2:\n  us: 1\n---\nd" {
+		t.Errorf("2")
+	}
+	if stripMetadata("d\n\n<!-- player2-metadata:a -->") != "d" {
+		t.Errorf("3")
+	}
 }
 
 func intPtr(i int) *int { return &i }
@@ -333,3 +391,12 @@ func TestWorker_ProcessJob_Backoff(t *testing.T) {
 	// Should not panic - exercises the backoff path
 	worker.processJob(context.Background(), job)
 }
+
+func(m *mockStore)AcquireSyncLock(string,string)(bool,error){return true,nil}
+func(m *mockStore)ReleaseSyncLock(string,string)error{return nil}
+func(m *mockStore)SaveSyncBaseline(string,string)error{return nil}
+func(m *mockStore)SetConflict(string,string)error{return nil}
+func(m *mockStore)MarkProjectSynced(string)error{return nil}
+func(m *mockStore)AcknowledgeDeletedTicket(string)error{return nil}
+func(m *mockStore)ListProjects(string,...int)([]models.Project,int,error){return nil,0,nil}
+func(m *mockStore)QueueSyncJob(string,string,string,any)error{return nil}

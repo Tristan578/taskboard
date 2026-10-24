@@ -33,7 +33,13 @@ export interface Subtask {
   position: number;
 }
 
+export interface WorkState {
+ agent: string; sessionId: string; heartbeatAt?: string; summary: string;
+ stale: boolean; completionUrl?: string; completedAt?: string; conflict?: string;
+}
+export interface SyncStatus { lastError?: string; pendingJobs: number; failedJobs: number; lastSyncAt?: string; githubConfigured?: boolean; }
 export interface Ticket {
+ work?: WorkState;
   id: string;
   projectId: string;
   teamId?: string;
@@ -102,6 +108,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+ sync: {
+  status: () => request<SyncStatus>("/api/sync/status"),
+  retry: () => request("/api/sync/retry", {method:"POST"}),
+ },
   projects: {
     list: () => request<Project[]>("/api/projects"),
     listPaginated: (params: PaginationParams & { status?: string }) =>
@@ -141,6 +151,8 @@ export const api = {
   },
 
   tickets: {
+    complete: (id: string, evidence: string) => request<Ticket>(`/api/tickets/${id}/complete`, {method:"POST",body:JSON.stringify({evidence})}),
+    resolve: (id: string, choice: "local" | "remote") => request(`/api/tickets/${id}/resolve`, {method:"POST",body:JSON.stringify({choice})}),
     list: () => request<Ticket[]>("/api/tickets"),
     listPaginated: (params: PaginationParams & { projectId?: string; status?: string; priority?: string }) =>
       request<PaginatedResult<Ticket>>(`/api/tickets${buildQuery(params)}`),

@@ -1,15 +1,16 @@
+import WorkEvidence from "./WorkEvidence";
 import { useState } from "react";
 import { X, Trash2, CheckCircle2, Circle, Pencil, Eye } from "lucide-react";
 import Markdown from "react-markdown";
 import { api, type Ticket, type Project, type Team, type Subtask } from "../api/client";
 
-const STATUSES = ["todo", "in_progress", "done"];
+const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 const PRIORITIES = ["urgent", "high", "medium", "low"];
 
 const STATUS_LABELS: Record<string, string> = {
   todo: "Todo",
   in_progress: "In Progress",
-  done: "Done",
+  review: "Review", blocked: "Blocked", done: "Done",
 };
 
 export default function TicketPanel({
@@ -24,7 +25,7 @@ export default function TicketPanel({
   projects: Project[];
   teams: Team[];
   onClose: () => void;
-  onUpdate: (id: string, data: Partial<Ticket>) => void;
+  onUpdate: (id: string, data: Partial<Ticket>) => void | Promise<void>;
   onDelete: (id: string) => void;
 }) {
   const [title, setTitle] = useState(ticket.title);
@@ -39,6 +40,7 @@ export default function TicketPanel({
   const [testingDetails, setTestingDetails] = useState(ticket.testingDetails || "");
   const [subtasks, setSubtasks] = useState<Subtask[]>(ticket.subtasks || []);
   const [newSubtask, setNewSubtask] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [descMode, setDescMode] = useState<"preview" | "write">(description ? "preview" : "write");
 
@@ -46,8 +48,9 @@ export default function TicketPanel({
 
   const project = projects.find((p) => p.id === ticket.projectId);
 
-  const handleSave = () => {
-    onUpdate(ticket.id, {
+  const handleSave = async () => {
+   setSaveError("");
+   try { await onUpdate(ticket.id, {
       title,
       description,
       status,
@@ -60,6 +63,7 @@ export default function TicketPanel({
       testingDetails,
     });
     setDirty(false);
+   } catch(e) {setSaveError(e instanceof Error ? e.message : "Save failed");}
   };
 
   const handleAddSubtask = async (e: React.FormEvent) => {
@@ -84,6 +88,7 @@ export default function TicketPanel({
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-slate-900 border-l border-slate-700 overflow-y-auto">
+
         <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xs font-mono text-slate-500">
@@ -115,6 +120,8 @@ export default function TicketPanel({
         </div>
 
         <div className="p-6 space-y-6">
+          <WorkEvidence ticket={ticket} onRefresh={onClose} />
+{saveError && <p role="alert" className="text-red-400">{saveError}</p>}
           <input
             value={title}
             onChange={(e) => {

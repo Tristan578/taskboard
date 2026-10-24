@@ -25,27 +25,30 @@ type Team struct {
 }
 
 type Ticket struct {
-	ID                 string     `json:"id"`
-	ProjectID          string     `json:"projectId"`
-	TeamID             *string    `json:"teamId,omitempty"`
-	Number             int        `json:"number"`
-	Title              string     `json:"title"`
-	Description        string     `json:"description,omitempty"`
-	Status             string     `json:"status"`
-	Priority           string     `json:"priority"`
-	DueDate            *time.Time `json:"dueDate,omitempty"`
-	Position           float64    `json:"position"`
-	LexoRank           string     `json:"lexoRank"`
-	GitHubIssueNumber  *int       `json:"githubIssueNumber,omitempty"`
-	GitHubLastSyncedAt *time.Time `json:"githubLastSyncedAt,omitempty"`
+	Revision            int        `json:"revision"`
+	ID                  string     `json:"id"`
+	ProjectID           string     `json:"projectId"`
+	TeamID              *string    `json:"teamId,omitempty"`
+	Number              int        `json:"number"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description,omitempty"`
+	Status              string     `json:"status"`
+	Priority            string     `json:"priority"`
+	DueDate             *time.Time `json:"dueDate,omitempty"`
+	Position            float64    `json:"position"`
+	LexoRank            string     `json:"lexoRank"`
+	GitHubIssueNumber   *int       `json:"githubIssueNumber,omitempty"`
+	GitHubLastSyncedAt  *time.Time `json:"githubLastSyncedAt,omitempty"`
 	GitHubLastSyncedSHA string     `json:"githubLastSyncedSha,omitempty"`
-	UserStory          string     `json:"userStory,omitempty"`
-	AcceptanceCriteria string     `json:"acceptanceCriteria,omitempty"`
-	TechnicalDetails   string     `json:"technicalDetails,omitempty"`
-	TestingDetails     string     `json:"testingDetails,omitempty"`
-	IsDraft            bool       `json:"isDraft"`
-	CreatedAt          time.Time  `json:"createdAt"`
-	UpdatedAt          time.Time  `json:"updatedAt"`
+	UserStory           string     `json:"userStory,omitempty"`
+	AcceptanceCriteria  string     `json:"acceptanceCriteria,omitempty"`
+	TechnicalDetails    string     `json:"technicalDetails,omitempty"`
+	TestingDetails      string     `json:"testingDetails,omitempty"`
+	IsDraft             bool       `json:"isDraft"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	UpdatedAt           time.Time  `json:"updatedAt"`
+
+	Work *WorkState `json:"work,omitempty"`
 
 	// Populated fields (not stored directly)
 	ProjectPrefix string    `json:"projectPrefix,omitempty"`
@@ -161,6 +164,7 @@ type CreateTicketRequest struct {
 }
 
 type UpdateTicketRequest struct {
+	ExpectedRevision    *int     `json:"-"`
 	TeamID              *string  `json:"teamId,omitempty"`
 	Title               *string  `json:"title,omitempty"`
 	Description         *string  `json:"description,omitempty"`
@@ -233,4 +237,21 @@ type SyncJob struct {
 	NextRetryAt *time.Time `json:"nextRetryAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+}
+
+// WorkState describes observed agent activity, never inferred agent execution.
+type WorkState struct {
+	Agent         string     `json:"agent"`
+	SessionID     string     `json:"sessionId"`
+	HeartbeatAt   *time.Time `json:"heartbeatAt,omitempty"`
+	Summary       string     `json:"summary"`
+	CompletionURL string     `json:"completionUrl,omitempty"`
+	CompletedAt   *time.Time `json:"completedAt,omitempty"`
+	Conflict      string     `json:"conflict,omitempty"`
+	Stale         bool       `json:"stale"`
+}
+type ActivityRequest struct {
+	Agent     string `json:"agent"`
+	SessionID string `json:"sessionId"`
+	Summary   string `json:"summary"`
 }

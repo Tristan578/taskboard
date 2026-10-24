@@ -13,7 +13,7 @@ import { api, type Ticket, type Project, type Team } from "../api/client";
 import TicketPanel from "../components/TicketPanel";
 import CreateTicketModal from "../components/CreateTicketModal";
 
-const STATUSES = ["todo", "in_progress", "done"];
+const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 const PRIORITIES = ["urgent", "high", "medium", "low"];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -25,7 +25,7 @@ const STATUS_STYLES: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   todo: "Todo",
   in_progress: "In Progress",
-  done: "Done",
+  review: "Review", blocked: "Blocked", done: "Done",
 };
 
 const PRIORITY_CONFIG: Record<string, { style: string; icon: typeof ArrowUp }> = {

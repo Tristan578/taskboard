@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/oklog/ulid/v2"
 )
 
 type Store struct {
@@ -86,6 +86,7 @@ func (s *Store) ListProjects(status string, limitOffset ...int) ([]models.Projec
 		return nil, 0, err
 	}
 
+	// #nosec G202 -- whereClause contains fixed SQL literals; user values use placeholders.
 	query := "SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, created_at, updated_at FROM projects" + whereClause + " ORDER BY created_at DESC"
 
 	// Apply pagination if provided
@@ -306,10 +307,11 @@ func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, e
 		return nil, 0, err
 	}
 
+	// #nosec G202 -- whereClause contains fixed SQL literals; user values use placeholders.
 	query := `SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
-		t.is_draft, t.created_at, t.updated_at, COALESCE(p.prefix, '') as project_prefix
+		t.is_draft, t.created_at, t.updated_at, t.revision, COALESCE(p.prefix, '') as project_prefix
 		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id` + whereClause +
 		" ORDER BY t.lexo_rank ASC, t.created_at DESC"
 
@@ -334,7 +336,7 @@ func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, e
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.TeamID, &t.Number, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 			&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
-			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.ProjectPrefix); err != nil {
+			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.ProjectPrefix); err != nil {
 			return nil, 0, err
 		}
 		tickets = append(tickets, t)
@@ -358,6 +360,10 @@ func (s *Store) ListTickets(filter models.TicketFilter) ([]models.Ticket, int, e
 			tickets[i].Labels = labelsMap[tickets[i].ID]
 			tickets[i].Subtasks = subtasksMap[tickets[i].ID]
 			tickets[i].BlockedBy = blockedByMap[tickets[i].ID]
+			tickets[i].Work, err = s.GetWorkState(tickets[i].ID)
+			if err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 
@@ -370,12 +376,12 @@ func (s *Store) GetTicket(id string) (*models.Ticket, error) {
 		`SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
-		t.is_draft, t.created_at, t.updated_at, COALESCE(p.prefix, '') as project_prefix
-		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?`, id,
+		t.is_draft, t.created_at, t.updated_at, t.revision, COALESCE(p.prefix, '') as project_prefix
+		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ? AND t.deleted_at IS NULL`, id,
 	).Scan(&t.ID, &t.ProjectID, &t.TeamID, &t.Number, &t.Title, &t.Description,
 		&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 		&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
-		&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.ProjectPrefix)
+		&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.ProjectPrefix)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -387,6 +393,10 @@ func (s *Store) GetTicket(id string) (*models.Ticket, error) {
 	t.Subtasks, _ = s.getTicketSubtasks(t.ID)
 	t.BlockedBy, _ = s.getTicketBlockedBy(t.ID)
 
+	t.Work, err = s.GetWorkState(t.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &t, nil
 }
 
@@ -425,6 +435,9 @@ func (s *Store) CreateTicket(req models.CreateTicketRequest) (*models.Ticket, er
 		UpdatedAt:          time.Now(),
 	}
 
+	if err := s.validateTicket(&t, ""); err != nil {
+		return nil, err
+	}
 	if req.DueDate != nil {
 		parsed, err := time.Parse("2006-01-02", *req.DueDate)
 		if err == nil {
@@ -462,6 +475,10 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 		return nil, err
 	}
 
+	if req.ExpectedRevision != nil && t.Revision != *req.ExpectedRevision {
+		return nil, invalid("ticket changed during sync; retry")
+	}
+	previousStatus := t.Status
 	if req.Title != nil {
 		t.Title = *req.Title
 	}
@@ -510,14 +527,23 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 			t.DueDate = &parsed
 		}
 	}
+	if err := s.validateTicket(t, previousStatus); err != nil {
+		return nil, err
+	}
 	t.UpdatedAt = time.Now()
 
-	_, err = s.db.Exec(
-		`UPDATE tickets SET team_id=?, title=?, description=?, status=?, priority=?, due_date=?, position=?, lexo_rank=?, github_issue_number=?, github_last_synced_sha=?, user_story=?, acceptance_criteria=?, technical_details=?, testing_details=?, is_draft=?, updated_at=? WHERE id=?`,
-		t.TeamID, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.GitHubIssueNumber, t.GitHubLastSyncedSHA, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.UpdatedAt, t.ID,
+	result, err := s.db.Exec(
+		`UPDATE tickets SET team_id=?, title=?, description=?, status=?, priority=?, due_date=?, position=?, lexo_rank=?, github_issue_number=?, github_last_synced_sha=?, user_story=?, acceptance_criteria=?, technical_details=?, testing_details=?, is_draft=?, updated_at=?, revision=revision+1 WHERE id=? AND revision=?`,
+		t.TeamID, t.Title, t.Description, t.Status, t.Priority, t.DueDate, t.Position, t.LexoRank, t.GitHubIssueNumber, t.GitHubLastSyncedSHA, t.UserStory, t.AcceptanceCriteria, t.TechnicalDetails, t.TestingDetails, t.IsDraft, t.UpdatedAt, t.ID, t.Revision,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if n, err := result.RowsAffected(); err != nil {
+		return nil, err
+	} else if n == 0 {
+		return nil, invalid("ticket changed; reload and retry")
 	}
 
 	if req.Labels != nil {
@@ -538,30 +564,15 @@ func (s *Store) UpdateTicket(id string, req models.UpdateTicketRequest) (*models
 }
 
 func (s *Store) MoveTicket(id string, req models.MoveTicketRequest) (*models.Ticket, error) {
-	now := time.Now()
-	position := float64(0)
-	lexoRank := ""
-
-	if req.Position != nil {
-		position = *req.Position
-		// Very basic LexoRank: just convert position to zero-padded string
-		// In a real brick building, we'd use a LexoRank library to find the midpoint
-		lexoRank = fmt.Sprintf("%010d", int(position))
-	} else {
-		var maxPos float64
-		if err := s.db.QueryRow("SELECT COALESCE(MAX(position), 0) + 1000 FROM tickets WHERE status = ?", req.Status).Scan(&maxPos); err != nil {
-			return nil, err
-		}
-		position = maxPos
-		lexoRank = fmt.Sprintf("%010d", int(position))
-	}
-
-	_, err := s.db.Exec("UPDATE tickets SET status=?, position=?, lexo_rank=?, updated_at=? WHERE id=?",
-		req.Status, position, lexoRank, now, id)
+	t, err := s.GetTicket(id)
 	if err != nil {
 		return nil, err
 	}
-	return s.GetTicket(id)
+	if t == nil {
+		return nil, fmt.Errorf("ticket not found")
+	}
+	draft := t.IsDraft && req.Status == "todo"
+	return s.UpdateTicket(id, models.UpdateTicketRequest{Status: &req.Status, Position: req.Position, IsDraft: &draft})
 }
 
 func (s *Store) DeleteTicket(id string) error {
@@ -578,10 +589,10 @@ func (s *Store) ListDeletedTickets(projectID string) ([]models.Ticket, error) {
 	query := `SELECT t.id, t.project_id, t.team_id, t.number, t.title, t.description,
 		t.status, t.priority, t.due_date, t.position, t.lexo_rank, t.github_issue_number, t.github_last_synced_at,
 		t.github_last_synced_sha, t.user_story, t.acceptance_criteria, t.technical_details, t.testing_details,
-		t.is_draft, t.created_at, t.updated_at, COALESCE(p.prefix, '') as project_prefix
+		t.is_draft, t.created_at, t.updated_at, t.revision, COALESCE(p.prefix, '') as project_prefix
 		FROM tickets t LEFT JOIN projects p ON t.project_id = p.id 
 		WHERE t.project_id = ? AND t.deleted_at IS NOT NULL`
-	
+
 	rows, err := s.db.Query(query, projectID)
 	if err != nil {
 		return nil, err
@@ -594,7 +605,7 @@ func (s *Store) ListDeletedTickets(projectID string) ([]models.Ticket, error) {
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.TeamID, &t.Number, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.Position, &t.LexoRank, &t.GitHubIssueNumber, &t.GitHubLastSyncedAt,
 			&t.GitHubLastSyncedSHA, &t.UserStory, &t.AcceptanceCriteria, &t.TechnicalDetails, &t.TestingDetails,
-			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.ProjectPrefix); err != nil {
+			&t.IsDraft, &t.CreatedAt, &t.UpdatedAt, &t.Revision, &t.ProjectPrefix); err != nil {
 			return nil, err
 		}
 		tickets = append(tickets, t)
@@ -603,7 +614,7 @@ func (s *Store) ListDeletedTickets(projectID string) ([]models.Ticket, error) {
 }
 
 func (s *Store) GetBoard(projectID string) (*models.Board, error) {
-	statuses := []string{"todo", "in_progress", "done"}
+	statuses := []string{"todo", "in_progress", "review", "blocked", "done"}
 	board := &models.Board{
 		ProjectID: projectID,
 		Columns:   make([]models.Column, len(statuses)),
@@ -941,8 +952,8 @@ func (s *Store) batchGetTicketBlockedBy(ids []string) (map[string][]string, erro
 func (s *Store) QueueSyncJob(projectID, ticketID, action string, payload any) error {
 	payloadJSON, _ := json.Marshal(payload)
 	_, err := s.db.Exec(
-		"INSERT INTO sync_jobs (id, project_id, ticket_id, action, payload, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
-		newID(), projectID, ticketID, action, string(payloadJSON), time.Now(), time.Now(),
+		"INSERT INTO sync_jobs (id, project_id, ticket_id, action, payload, status, created_at, updated_at) SELECT ?, ?, ?, ?, ?, 'pending', ?, ? WHERE NOT EXISTS (SELECT 1 FROM sync_jobs WHERE project_id=? AND status IN ('pending','failed'))",
+		newID(), projectID, ticketID, action, string(payloadJSON), time.Now(), time.Now(), projectID,
 	)
 	return err
 }
@@ -987,6 +998,7 @@ func (s *Store) UpdateSyncJobRetry(id string, attempts int, lastError string, ne
 
 // SyncStatus holds aggregate sync queue metrics.
 type SyncStatus struct {
+	LastError   string     `json:"lastError,omitempty"`
 	PendingJobs int        `json:"pendingJobs"`
 	FailedJobs  int        `json:"failedJobs"`
 	LastSyncAt  *time.Time `json:"lastSyncAt,omitempty"`
@@ -1006,8 +1018,11 @@ func (s *Store) GetSyncStatus() (*SyncStatus, error) {
 		return nil, err
 	}
 
+	if err := s.db.QueryRow("SELECT COALESCE(last_error,'') FROM sync_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 1").Scan(&status.LastError); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
 	var lastSync sql.NullTime
-	row = s.db.QueryRow("SELECT MAX(updated_at) FROM sync_jobs WHERE status = 'completed'")
+	row = s.db.QueryRow("SELECT updated_at FROM sync_jobs WHERE status = 'completed' ORDER BY updated_at DESC LIMIT 1")
 	if err := row.Scan(&lastSync); err == nil && lastSync.Valid {
 		status.LastSyncAt = &lastSync.Time
 	}

@@ -23,7 +23,14 @@ var testSkillsFS embed.FS
 // TestMain ensures all stale test processes are cleaned up after the suite
 // finishes, regardless of how tests exit (panic, timeout, etc.).
 func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "player2-cli-tests-")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("XDG_CONFIG_HOME", dir)
+	_ = os.Setenv("APPDATA", dir)
 	code := m.Run()
+	_ = os.RemoveAll(dir)
 	// Run cleanup with a hard deadline so it never blocks test exit.
 	done := make(chan struct{})
 	go func() {
@@ -41,6 +48,14 @@ func TestMain(m *testing.M) {
 // All exec calls use a 5-second timeout to prevent hangs.
 func listStaleTestPIDs() []int {
 	self := os.Getpid()
+	// /proc may expose host PIDs while os.Getpid reports a nested PID namespace.
+	if runtime.GOOS == "linux" {
+		if raw, err := os.Readlink("/proc/self"); err == nil {
+			if pid, err := strconv.Atoi(raw); err == nil {
+				self = pid
+			}
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -199,16 +214,16 @@ func TestCLI_Comprehensive(t *testing.T) {
 		_ = run("project", "delete") // missing arg
 		_ = run("project", "delete", "NONEXISTENT")
 		_ = run("project", "link", "P1") // missing arg
-		_ = run("project", "sync") // missing arg
+		_ = run("project", "sync")       // missing arg
 
 		// Team errors
 		_ = run("team", "create") // missing arg
 		_ = run("team", "delete") // missing arg
-		_ = run("team", "list") // empty
+		_ = run("team", "list")   // empty
 
 		// Ticket errors
 		_ = run("ticket", "create") // missing project/title
-		_ = run("ticket", "move") // missing arg
+		_ = run("ticket", "move")   // missing arg
 		_ = run("ticket", "move", "INVALID", "--status", "done")
 		_ = run("ticket", "delete", "INVALID")
 		_ = run("ticket", "subtask", "add") // missing args

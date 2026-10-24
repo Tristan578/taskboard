@@ -37,6 +37,11 @@ jobs:
             goarch: amd64
             suffix: windows-amd64
 
+          - os: ubuntu-latest
+            goos: windows
+            goarch: arm64
+            suffix: windows-arm64
+
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -104,6 +109,10 @@ jobs:
             fi
           done
 
+      - name: Checksum release assets
+        working-directory: release
+        run: sha256sum *.tar.gz *.zip > SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -111,3 +120,4 @@ jobs:
           files: |
             release/*.tar.gz
             release/*.zip
+            release/SHA256SUMS

@@ -12,7 +12,9 @@ import (
 )
 
 type Store interface {
-	GetProject(id string) (*models.Project, error)
+	SyncStore
+	QueueSyncJob(string, string, string, any) error
+	ListProjects(status string, pagination ...int) ([]models.Project, int, error)
 	ListTickets(filter models.TicketFilter) ([]models.Ticket, int, error)
 	GetTicket(id string) (*models.Ticket, error)
 	UpdateTicket(id string, req models.UpdateTicketRequest) (*models.Ticket, error)
@@ -38,6 +40,20 @@ func CalculateNextRetry(attempts int) time.Time {
 	return time.Now().Add(delay)
 }
 
+func (w *Worker) scheduleProjects() {
+	projects, _, err := w.store.ListProjects("")
+	if err != nil {
+		slog.Error("sync discovery failed", "error", err)
+		return
+	}
+	for _, p := range projects {
+		if p.GitHubRepo != "" {
+			if err := w.store.QueueSyncJob(p.ID, "", "full_sync", nil); err != nil {
+				slog.Error("sync schedule failed", "error", err)
+			}
+		}
+	}
+}
 
 type Worker struct {
 	store  Store
@@ -51,15 +67,20 @@ func NewWorker(store Store, client *Client) *Worker {
 	}
 }
 
-
 func (w *Worker) Start(ctx context.Context) {
+	w.scheduleProjects()
+	w.processJobs(ctx)
 	ticker := time.NewTicker(5 * time.Second)
+	reconcile := time.NewTicker(time.Minute)
+	defer reconcile.Stop()
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-reconcile.C:
+			w.scheduleProjects()
 		case <-ticker.C:
 			w.processJobs(ctx)
 		}

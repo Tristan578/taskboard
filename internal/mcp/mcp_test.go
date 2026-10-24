@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -13,21 +12,10 @@ import (
 )
 
 func setupTestMCP(t *testing.T) (*MCPServer, *db.Store, func()) {
-	database, err := sql.Open("sqlite", ":memory:")
+	database, err := db.OpenAt(t.TempDir() + "/test.db")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
-		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
-		CREATE TABLE subtasks (id TEXT PRIMARY KEY, ticket_id TEXT, title TEXT, completed BOOLEAN DEFAULT 0, position INTEGER);
-		CREATE TABLE ticket_labels (ticket_id TEXT, label_id TEXT, PRIMARY KEY (ticket_id, label_id));
-		CREATE TABLE ticket_dependencies (ticket_id TEXT, blocked_by_id TEXT, PRIMARY KEY (ticket_id, blocked_by_id));
-		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
-	`)
 
 	store := db.NewStore(database)
 	s := NewServer(store)
@@ -60,7 +48,7 @@ func TestMCP_Tools(t *testing.T) {
 		{"get_board", map[string]string{"projectId": p.ID}},
 		{"create_subtask", map[string]string{"ticketId": ticket.ID, "title": "Sub 1"}},
 		{"batch_create_subtasks", map[string]interface{}{"ticketId": ticket.ID, "subtasks": []map[string]string{{"title": "Sub 2"}, {"title": "Sub 3"}}}},
-		{"toggle_subtask", map[string]string{"id": "s1"}}, 
+		{"toggle_subtask", map[string]string{"id": "s1"}},
 		{"delete_subtask", map[string]string{"id": "s1"}},
 		{"delete_ticket", map[string]string{"id": ticket.ID}},
 		{"delete_team", map[string]string{"id": team.ID}},
@@ -70,7 +58,7 @@ func TestMCP_Tools(t *testing.T) {
 
 	for _, tt := range tests {
 		argsJSON, _ := json.Marshal(tt.args)
-		_, _ = s.callTool(tt.name, argsJSON) 
+		_, _ = s.callTool(tt.name, argsJSON)
 	}
 
 	// Test error cases
@@ -161,6 +149,7 @@ invalid json
 }
 
 type errorReader struct{}
+
 func (e *errorReader) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("forced error")
 }
@@ -176,6 +165,7 @@ func TestMCP_Run_ReadError(t *testing.T) {
 }
 
 type faultyWriter struct{}
+
 func (f *faultyWriter) Write(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("write error")
 }
@@ -186,7 +176,7 @@ func TestMCP_Run_WriteError(t *testing.T) {
 
 	input := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"initialize"}` + "\n")
 	output := &faultyWriter{}
-	
+
 	_ = s.Run(input, output)
 }
 
@@ -238,12 +228,12 @@ func TestMCP_Run_MarshalError(t *testing.T) {
 func TestMCP_BatchCreate_Error(t *testing.T) {
 	s, store, cleanup := setupTestMCP(t)
 	// No defer cleanup, we'll close manually to trigger error
-	
+
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P", Prefix: "P"})
 	tick, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T"})
-	
+
 	_ = store.Close()
-	
+
 	args := map[string]interface{}{
 		"ticketId": tick.ID,
 		"subtasks": []map[string]string{{"title": "S1"}},
@@ -265,7 +255,7 @@ func TestMCP_HandleToolCall_InvalidParams(t *testing.T) {
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "tools/call",
-		Params:  json.RawMessage(`123`), 
+		Params:  json.RawMessage(`123`),
 	}
 	resp := s.handleToolCall(req)
 	if resp.Error == nil || resp.Error.Code != -32602 {

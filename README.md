@@ -1,5 +1,7 @@
 # Player2 Kanban
 
+> Rebuild preview: agent activity, stale-work detection, recoverable sync, and verified completion. See [the workflow and migration contract](docs/rebuild.md). Build this branch from source until a matching release is published.
+
 **Player2 Kanban** is an agent-native, local-first project management tool. It bridges the gap between fast "vibe coding" and professional team workflows by syncing local tasks directly with GitHub Issues.
 
 This project is a fork of the excellent [tcarac/taskboard](https://github.com/tcarac/taskboard), enhanced with deep AI agent integration, strict engineering standards enforcement, and bidirectional GitHub synchronization.
@@ -200,3 +202,27 @@ Based on [Taskboard](https://github.com/tcarac/taskboard) by tcarac.
 ## License
 
 [MIT](LICENSE)
+
+## Observable agent workflow (rebuild)
+
+```bash
+player2-kanban start
+player2-kanban status
+player2-kanban agent-config install all
+player2-kanban activity TICKET_ID --agent Codex --session RUN_ID --summary "Investigating"
+player2-kanban ticket move TICKET_ID --status in_progress
+# Heartbeat at milestones and at least every five minutes.
+player2-kanban ticket move TICKET_ID --status review
+# Only after merge:
+player2-kanban ticket complete TICKET_ID --evidence https://github.com/OWNER/REPO/pull/NUMBER
+```
+
+Use the actual ticket ID, not its display key. Configure `player2-kanban mcp` in
+agent clients. Set `GITHUB_TOKEN` in the server environment for background sync and
+in CLI/MCP environments when verifying completion. All processes must share the
+same `--db` when a custom database is used. The board refreshes every five seconds.
+The server is local-only; remote agents need a separately configured workspace.
+
+Conflicts preserve both versions until you choose one in the ticket panel. Failed
+sync appears on the board and can be retried. Stale activity does not automatically
+close a task. See [supported sync fields and limitations](docs/rebuild.md).
