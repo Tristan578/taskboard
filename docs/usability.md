@@ -55,7 +55,7 @@ are removed from the README entry path because they are not evidence of the new 
 Automated tests cover first-board creation, retries without duplicates, invalid
 plans without partial writes, everyday versus software completion, backup restore
 reads, HTTP boundaries, and task handoff UI. CI builds native installer artifacts.
-Record the actual final CI results in the pull request.
+The pull request and launch assessment link execution evidence for the tested code commit.
 
 Additional tests exercise stale edits through storage, HTTP and MCP, atomic
 rollback, date/team clearing, conflict comparison, unsaved-close warnings,
@@ -72,7 +72,10 @@ and rollback when the next occurrence cannot be saved.
 The package workflow now installs and exercises matching native binaries on disposable
 runners. Other architectures remain package-build checks. A separate CI job imports
 issues through GitHub's actual API using read-only permissions and a transport guard
-that rejects mutations. Record current-commit results in the PR. Real two-way writes
+that rejects mutations. At code commit `a320efb`, all six installer builds and the
+CI suite passed. Installed workflows passed on Linux x64, macOS ARM64 and Windows
+x64; the live read imported 10 issues in one request. Windows uninstall preserved
+the test boards. Real two-way writes
 in a disposable repository are a separate validation, not covered by that live read.
 
 `release-test-matrix.json` and `launch-assessment.json` keep release gates explicit.

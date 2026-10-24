@@ -2,22 +2,22 @@
   "capabilities": [
     {
       "id": "CAP-1",
-      "name": "functional",
+      "name": "deleted-task recovery",
       "critical": true
     },
     {
       "id": "CAP-2",
-      "name": "recovery",
+      "name": "backup and board restoration",
       "critical": true
     },
     {
       "id": "CAP-3",
-      "name": "recurrence",
+      "name": "completion-driven recurrence",
       "critical": true
     },
     {
       "id": "CAP-4",
-      "name": "browser-boundary",
+      "name": "local browser boundary",
       "critical": true
     }
   ],
@@ -27,168 +27,197 @@
       "capability_id": "CAP-1",
       "type": "positive",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+      "evidence": "internal/db/recovery_test.go: TestDeletedTaskRestorePreservesNotesAndRejectsStaleUndo",
+      "description": "Restore deleted notes and checklist intact"
     },
     {
       "id": "CAP-1-2",
       "capability_id": "CAP-1",
       "type": "negative",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+      "evidence": "internal/db/recovery_test.go: TestDeletedTaskRestorePreservesNotesAndRejectsStaleUndo",
+      "description": "Reject an Undo request after a newer deletion"
     },
     {
       "id": "CAP-1-3",
       "capability_id": "CAP-1",
       "type": "boundary",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+      "evidence": "internal/db/recovery_test.go: TestDeletedTaskRestorePreservesNotesAndRejectsStaleUndo",
+      "description": "Retry the same successful Undo without duplication"
     },
     {
       "id": "CAP-1-4",
       "capability_id": "CAP-1",
       "type": "dependency-failure",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+      "evidence": "internal/db/recovery_test.go: TestDeletedTaskRestorePreservesNotesAndRejectsStaleUndo",
+      "description": "Refuse restoration while the linked project has an active sync lock"
     },
     {
       "id": "CAP-1-5",
       "capability_id": "CAP-1",
       "type": "observability",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+      "evidence": "web/src/pages/Recovery.test.tsx: keeps failed task recovery visible and cancels unwanted restore previews",
+      "description": "Show failed restoration and retain the deleted task for retry"
     },
     {
       "id": "CAP-1-6",
       "capability_id": "CAP-1",
       "type": "rollback",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go; web/src/pages/Recovery.test.tsx"
+      "evidence": "web/src/pages/Recovery.test.tsx: keeps failed task recovery visible and cancels unwanted restore previews",
+      "description": "Leave the task available in recovery after a rejected UI request"
     },
     {
       "id": "CAP-2-1",
       "capability_id": "CAP-2",
       "type": "positive",
       "automated": true,
-      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRecoveryPreservesExistingContentAndRelationships",
+      "description": "Restore separate boards without replacing current work; preserve relationships and make retries idempotent"
     },
     {
       "id": "CAP-2-2",
       "capability_id": "CAP-2",
       "type": "negative",
       "automated": true,
-      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestBackupRejectsUntrustedSchemaAndBrokenFiles",
+      "description": "Reject damaged files and unexpected SQL triggers before migration"
     },
     {
       "id": "CAP-2-3",
       "capability_id": "CAP-2",
       "type": "boundary",
       "automated": true,
-      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+      "evidence": "internal/recovery/manager_test.go: TestAutomaticBackupRetentionAndRecovery, TestRecoveryFailuresPreserveData; internal/db/recovery_test.go: TestPreviousBackupVersionMigratesOnlyTheStagingCopy",
+      "description": "Keep 14 backups, expire previews and limit pending previews; accept the previous database version"
     },
     {
       "id": "CAP-2-4",
       "capability_id": "CAP-2",
       "type": "dependency-failure",
       "automated": true,
-      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+      "evidence": "internal/recovery/manager_test.go: TestBackupFailureIsVisible",
+      "description": "Report failed backup writes and permit a successful retry"
     },
     {
       "id": "CAP-2-5",
       "capability_id": "CAP-2",
       "type": "observability",
       "automated": true,
-      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+      "evidence": "internal/recovery/manager_test.go: TestBackupFailureIsVisible; web/src/pages/Recovery.test.tsx: requires reviewing a preview and preserves it after a failed restore so retries reuse the same ID",
+      "description": "Expose backup errors and retain a failed restore preview for retry"
     },
     {
       "id": "CAP-2-6",
       "capability_id": "CAP-2",
       "type": "rollback",
       "automated": true,
-      "evidence": "internal/recovery/manager_test.go; internal/server/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRecoveryPreservesExistingContentAndRelationships",
+      "description": "Roll back all copied boards and relationships after an invalid relationship insert"
     },
     {
       "id": "CAP-3-1",
       "capability_id": "CAP-3",
       "type": "positive",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRepeatCompletionExactlyOnceAndCalendarAnchors",
+      "description": "Completing a weekly task creates one next task and resets its checklist"
     },
     {
       "id": "CAP-3-2",
       "capability_id": "CAP-3",
       "type": "negative",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRepeatCompletionExactlyOnceAndCalendarAnchors",
+      "description": "Reject clearing the date from a repeating task"
     },
     {
       "id": "CAP-3-3",
       "capability_id": "CAP-3",
       "type": "boundary",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRepeatCompletionExactlyOnceAndCalendarAnchors, TestRepeatFailureRollsBackCompletionAndMonthlyEditsKeepAnchor",
+      "description": "Preserve month-end anchors through leap February, note edits and late completion"
     },
     {
       "id": "CAP-3-4",
       "capability_id": "CAP-3",
       "type": "dependency-failure",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRepeatFailureRollsBackCompletionAndMonthlyEditsKeepAnchor",
+      "description": "Return a storage error when creating the next task fails"
     },
     {
       "id": "CAP-3-5",
       "capability_id": "CAP-3",
       "type": "observability",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRepeatCompletionExactlyOnceAndCalendarAnchors",
+      "description": "Expose the new due date, source task, fresh checklist and unclaimed state in task listings"
     },
     {
       "id": "CAP-3-6",
       "capability_id": "CAP-3",
       "type": "rollback",
       "automated": true,
-      "evidence": "internal/db/recovery_test.go"
+      "evidence": "internal/db/recovery_test.go: TestRepeatFailureRollsBackCompletionAndMonthlyEditsKeepAnchor",
+      "description": "Roll back parent completion and revision when the next task cannot be inserted"
     },
     {
       "id": "CAP-4-1",
       "capability_id": "CAP-4",
       "type": "positive",
       "automated": true,
-      "evidence": "internal/server/security_test.go"
+      "evidence": "internal/server/security_test.go: TestLocalBoundary, TestBrowserIsolationHeadersAndFetchMetadata",
+      "description": "Allow local same-origin requests and command-line clients"
     },
     {
       "id": "CAP-4-2",
       "capability_id": "CAP-4",
       "type": "negative",
       "automated": true,
-      "evidence": "internal/server/security_test.go"
+      "evidence": "internal/server/security_test.go: TestLocalBoundary, TestBrowserIsolationHeadersAndFetchMetadata",
+      "description": "Reject hostile hosts, foreign origins and cross-site API requests"
     },
     {
       "id": "CAP-4-3",
       "capability_id": "CAP-4",
       "type": "boundary",
       "automated": true,
-      "evidence": "internal/server/security_test.go"
+      "evidence": "internal/server/security_test.go: TestLargeAPIRequestRejectedWithoutWriting",
+      "description": "Reject an oversized JSON mutation without creating a project"
     },
     {
       "id": "CAP-4-4",
       "capability_id": "CAP-4",
       "type": "dependency-failure",
-      "automated": true,
-      "evidence": "internal/server/security_test.go"
+      "automated": false,
+      "evidence": "internal/server/security.go: localBoundary performs synchronous request/header checks",
+      "description": "Boundary enforcement has no network or storage dependency to fail",
+      "applicability": "not-applicable: no external dependency in this boundary"
     },
     {
       "id": "CAP-4-5",
       "capability_id": "CAP-4",
       "type": "observability",
       "automated": true,
-      "evidence": "internal/server/security_test.go"
+      "evidence": "internal/server/security_test.go: TestBrowserIsolationHeadersAndFetchMetadata",
+      "description": "Return explicit rejection codes and isolation headers"
     },
     {
       "id": "CAP-4-6",
       "capability_id": "CAP-4",
       "type": "rollback",
       "automated": true,
-      "evidence": "internal/server/security_test.go"
+      "evidence": "internal/server/security_test.go: TestLargeAPIRequestRejectedWithoutWriting",
+      "description": "Reject before the downstream mutation writes data"
     }
+  ],
+  "notes": [
+    "This matrix maps concrete assertions; structural validation alone does not prove execution. See launch-assessment.json and CI runs for execution evidence.",
+    "Interactive usability, physical device behavior, signing and live GitHub writes remain separate release gates."
   ]
 }

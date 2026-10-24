@@ -20,28 +20,35 @@
       "status": "pass",
       "evidence": [
         "internal/server/security_test.go",
-        "local gosec and schema allowlist tests"
+        "local gosec and schema allowlist tests",
+        "https://github.com/Tristan578/taskboard/actions/runs/40060173135/job/120771749817"
       ],
       "owner": "engineering",
-      "notes": "Local boundary, bounded files and trusted schemas only."
+      "notes": "Local boundary, bounded files and schema allowlist tests pass. Current CI lint and security scanner pass; the constrained backup download path is documented at its scanner suppression."
     },
     {
       "id": "G3",
       "domain": "native-installation",
       "severity": "high",
-      "status": "not-run",
-      "evidence": [],
-      "owner": "release owner",
-      "notes": "CI package installation checks pending for this commit."
+      "status": "pass",
+      "evidence": [
+        "https://github.com/Tristan578/taskboard/actions/runs/40060173131",
+        "packaging/smoke.py"
+      ],
+      "owner": "engineering",
+      "notes": "Commit a320efb: all six installer builds pass. Installed native workflows pass on Linux x64, macOS ARM64 and Windows x64, including Windows uninstall/data preservation. Linux ARM64, macOS x64 and Windows ARM64 are build-only checks on these runners; interactive launch is covered by G5."
     },
     {
       "id": "G4",
       "domain": "live-github-read",
       "severity": "high",
-      "status": "not-run",
-      "evidence": [],
-      "owner": "release owner",
-      "notes": "Read-only integration CI pending; no token exported to local workspace."
+      "status": "pass",
+      "evidence": [
+        "https://github.com/Tristan578/taskboard/actions/runs/40060173135/job/120771749765",
+        "internal/github/live_test.go"
+      ],
+      "owner": "engineering",
+      "notes": "Commit a320efb: one live API request imported 10 issues. Both job token permissions and transport prohibit writes. Real two-way writes remain G7."
     },
     {
       "id": "G5",
@@ -74,5 +81,6 @@
       "owner": "release owner",
       "notes": "Real two-way changes need an explicitly disposable linked repository; deterministic integration tests cover the lifecycle."
     }
-  ]
+  ],
+  "tested_code_commit": "a320efb9aa8f009c098bef6eb7e7cceb0e331fb0"
 }
