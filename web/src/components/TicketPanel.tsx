@@ -1,3 +1,4 @@
+import TaskAIHelp from "./TaskAIHelp";
 import WorkEvidence from "./WorkEvidence";
 import { useState } from "react";
 import { X, Trash2, CheckCircle2, Circle, Pencil, Eye } from "lucide-react";
@@ -120,7 +121,9 @@ export default function TicketPanel({
         </div>
 
         <div className="p-6 space-y-6">
-          <WorkEvidence ticket={ticket} onRefresh={onClose} />
+          <p className="text-xs text-slate-500 break-all">Task ID: {ticket.id}</p>
+          <TaskAIHelp ticket={ticket} project={project}/>
+          <WorkEvidence manual={project?.completionPolicy === "manual"} ticket={ticket} onRefresh={onClose} />
 {saveError && <p role="alert" className="text-red-400">{saveError}</p>}
           <input
             value={title}

@@ -144,3 +144,14 @@ body {
   border-top: 1px solid #1e293b; /* slate-800 */
   margin: 0.625rem 0;
 }
+
+.easy-page { max-width: 850px; margin: 0 auto; padding: 40px 28px 64px; }
+.easy-label { display: block; font-size: 15px; font-weight: 500; color: #e2e8f0; }
+.easy-input { display: block; width: 100%; margin-top: 9px; border: 1px solid #475569; border-radius: 10px; background: #0f172a; color: #f1f5f9; padding: 12px 14px; font-size: 16px; font-weight: 400; }
+.easy-button, .easy-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 18px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.easy-button { background: #5eead4; color: #042f2e; }
+.easy-secondary { background: #1e293b; color: #f1f5f9; }
+.easy-button:hover { background: #99f6e4; }
+button:disabled { opacity: .5; cursor: wait; }
+:focus-visible { outline: 2px solid #5eead4; outline-offset: 3px; }
+@media(max-width:640px) { .easy-page { padding: 26px 18px 48px; } }

@@ -3,6 +3,7 @@ package models
 import "time"
 
 type Project struct {
+	CompletionPolicy string     `json:"completionPolicy"`
 	ID               string     `json:"id"`
 	Name             string     `json:"name"`
 	Prefix           string     `json:"prefix"`
@@ -116,13 +117,14 @@ type Column struct {
 }
 
 type CreateProjectRequest struct {
-	Name        string `json:"name"`
-	Prefix      string `json:"prefix"`
-	Description string `json:"description,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Color       string `json:"color,omitempty"`
-	GitHubRepo  string `json:"githubRepo,omitempty"`
-	Strict      bool   `json:"strict"`
+	CompletionPolicy string `json:"completionPolicy,omitempty"`
+	Name             string `json:"name"`
+	Prefix           string `json:"prefix"`
+	Description      string `json:"description,omitempty"`
+	Icon             string `json:"icon,omitempty"`
+	Color            string `json:"color,omitempty"`
+	GitHubRepo       string `json:"githubRepo,omitempty"`
+	Strict           bool   `json:"strict"`
 }
 
 type UpdateProjectRequest struct {

@@ -1,4 +1,5 @@
 export interface Project {
+  completionPolicy?: "manual" | "verified";
   id: string;
   name: string;
   prefix: string;
@@ -101,13 +102,17 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+    let message = text;
+    try { message = JSON.parse(text).error || text; } catch { /* Plain text response. */ }
+    throw new Error(message || "Something went wrong. Please try again.");
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
 export const api = {
+ connections: () => request<{mcpServers:Record<string,{command:string;args:string[]}>}>("/api/connections"),
+ welcome: { create: (data: {requestId:string;name:string;goal:string;completionPolicy:"manual"|"verified";tasks:{title:string;description:string}[]}) => request<Project>("/api/welcome", {method:"POST",body:JSON.stringify(data)}) },
  sync: {
   status: () => request<SyncStatus>("/api/sync/status"),
   retry: () => request("/api/sync/retry", {method:"POST"}),

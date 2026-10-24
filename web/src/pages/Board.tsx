@@ -1,3 +1,4 @@
+import { Link, useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext,
@@ -31,9 +32,9 @@ import CreateTicketModal from "../components/CreateTicketModal";
 
 const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 const STATUS_LABELS: Record<string, string> = {
-  todo: "Todo",
-  in_progress: "In Progress",
-  review: "Review", blocked: "Blocked", done: "Done",
+  todo: "To do",
+  in_progress: "Working on it",
+  review: "Review", blocked: "Needs help", done: "Done",
 };
 const STATUS_COLORS: Record<string, string> = {
   todo: "bg-slate-500",
@@ -152,10 +153,10 @@ function TicketCard({
         </div>
       )}
       {ticket.work?.agent && <p className={`text-xs ${ticket.work.stale && ticket.status==="in_progress" ? "text-amber-400" : "text-cyan-400"}`}>{ticket.work.agent} · {ticket.work.stale ? "No recent heartbeat" : "Reported recently"}</p>}
-      {ticket.status==="in_progress" && !ticket.work?.agent && <p className="text-xs text-amber-400">Untracked activity</p>}
+      {project?.completionPolicy!=="manual" && ticket.status==="in_progress" && !ticket.work?.agent && <p className="text-xs text-amber-400">Untracked activity</p>}
       {ticket.work?.summary && <p className="line-clamp-2 text-xs text-slate-400">{ticket.work.summary}</p>}
       {ticket.work?.conflict && <p className="text-xs text-amber-400">GitHub conflict · resolve required</p>}
-      {ticket.status==="done" && <p className="text-xs text-slate-400">{ticket.work?.completionUrl ? "Completion verified" : "Legacy · evidence not recorded"}</p>}
+      {ticket.status==="done" && <p className="text-xs text-slate-400">{project?.completionPolicy==="manual" ? "Marked done" : ticket.work?.completionUrl ? "Completion verified" : "Legacy · evidence not recorded"}</p>}
       <SubtaskProgress subtasks={ticket.subtasks} />
     </div>
   );
@@ -251,7 +252,8 @@ function Column({
 export default function Board() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  const [selectedProject, setSelectedProject] = useState<string>(searchParams.get("project") || "");
   const [columns, setColumns] = useState<BoardColumn[]>([]);
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -261,7 +263,7 @@ export default function Board() {
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const generation = useRef(0);
   const allTickets = columns.flatMap(c => c.tickets);
-  const stale = allTickets.filter(t => t.status === "in_progress" && (!t.work?.agent || t.work.stale)).length;
+  const stale = allTickets.filter(t => t.status === "in_progress" && (projects.find(p=>p.id===t.projectId)?.completionPolicy!=="manual" || t.work?.agent) && (!t.work?.agent || t.work.stale)).length;
   const conflicts = allTickets.filter(t => t.work?.conflict).length;
 
   const sensors = useSensors(
@@ -383,13 +385,14 @@ export default function Board() {
   return (
     <div className="h-full flex flex-col">
       <header className="shrink-0 flex items-center justify-between px-6 h-14 border-b border-slate-800">
-        <h1 className="text-lg font-semibold text-white">Agent workspace</h1>
+        <h1 className="text-lg font-semibold text-white">My board</h1>
         <select
+          aria-label="Choose a board"
           value={selectedProject}
           onChange={(e) => setSelectedProject(e.target.value)}
           className="bg-slate-800 text-sm text-slate-300 rounded-md border border-slate-700 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
-          <option value="">All Projects</option>
+          <option value="">All boards</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.icon} {p.name}
@@ -399,16 +402,16 @@ export default function Board() {
       </header>
 
       <div className="border-b border-slate-800 bg-slate-950 px-6 py-4 space-y-2">
-       <div className="flex flex-wrap gap-4 text-xs text-slate-400">
+       {(allTickets.some(t=>t.work?.agent) || projects.some(p=>p.githubRepo)) && <div className="flex flex-wrap gap-4 text-xs text-slate-400">
         <span className="text-cyan-400">● Updates every 5 seconds</span>
         <span>{allTickets.length} tasks</span><span className={stale ? "text-amber-400" : ""}>{stale} stale / untracked</span>
         <span className={conflicts ? "text-amber-400" : ""}>{conflicts} conflicts</span>
         <span>{sync?.pendingJobs ?? "…"} sync pending · {sync?.failedJobs ?? "…"} failed</span>
-        {sync?.githubConfigured === false && <span className="text-amber-400">GitHub token not configured</span>}
+        {sync?.githubConfigured === false && <span className="text-amber-400">GitHub not connected · optional</span>}
         {!!sync?.failedJobs && <button onClick={() => api.sync.retry().then(loadBoard).catch(e=>setError(String(e)))} className="underline">Retry failed sync</button>}
-       </div>
-       <p className="text-xs text-slate-500">Agents report progress through MCP or CLI. No heartbeat for 15 minutes flags stale work. Done means verified merge or deployment.</p>
-       {!loading && !error && allTickets.length===0 && <div className="rounded-lg border border-slate-700 p-3 text-sm text-slate-300">Connect your agent: <code className="text-cyan-300">player2-kanban agent-config install all</code> · configure MCP with <code>player2-kanban mcp</code>. Create a project to start tracking work.</div>}
+       </div>}
+       <p className="text-sm text-slate-400">Open a task to work on it or ask your AI for help. <Link to="/help" className="text-teal-300 underline">How it works</Link></p>
+       {!loading && !error && allTickets.length===0 && <div className="py-4 text-slate-300">A useful plan starts with one small step. <Link to="/welcome" className="text-teal-300 underline">Create a board from an example</Link> or add a task below.</div>}
        {sync?.lastError && <p className="text-xs text-amber-400">Last sync error: {sync.lastError}</p>}
        {error && <div role="alert" className="text-sm text-red-400">{error} <button onClick={()=>void loadBoard()} className="underline">Retry</button></div>}
       </div>
@@ -455,6 +458,7 @@ export default function Board() {
           projects={projects}
           teams={teams}
           defaultStatus={createForStatus}
+          defaultProjectId={selectedProject}
           onClose={() => setCreateForStatus(null)}
           onCreate={handleCreate}
         />

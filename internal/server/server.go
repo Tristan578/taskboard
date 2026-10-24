@@ -102,6 +102,9 @@ func (s *Server) setupRoutes(webFS fs.FS) {
 	r.Use(localBoundary)
 
 	r.Route("/api", func(r chi.Router) {
+		r.Post("/welcome", s.createWorkspace)
+		r.Get("/backup", s.downloadBackup)
+		r.Get("/connections", s.connectionSettings)
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", s.listProjects)
 			r.Post("/", s.createProject)
@@ -238,8 +241,8 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.Name == "" || req.Prefix == "" {
-		writeError(w, http.StatusBadRequest, "name and prefix are required")
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "board name is required")
 		return
 	}
 	p, err := s.store.CreateProject(req)

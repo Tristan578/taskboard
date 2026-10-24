@@ -17,7 +17,7 @@ If Player2 is unavailable, tell the user explicitly; never imply work is tracked
    Never take over another active session; stale sessions may be reclaimed.
 5. Move to `blocked` with a progress summary describing what is needed, or
    `review` when implementation/tests are ready for review. Tests passing is not Done.
-6. After merge or deployment, call `complete_ticket` with id/evidence, or
+6. On software boards, after merge or deployment, call `complete_ticket` with id/evidence, or
    `player2-kanban ticket complete <id> --evidence https://github.com/OWNER/REPO/pull/NUMBER`.
    Player2 verifies the merge. GitHub deployment API URLs are also supported;
    the latest deployment status must be success. Use evidence for THIS task.
@@ -40,3 +40,7 @@ This claims the task and sends process heartbeats automatically. Successful exit
 moves In Progress to Review; failed/interrupted exit moves it to Blocked. The
 process heartbeat is not evidence of implementation progress. Continue reporting
 meaningful work summaries through the normal tools when possible.
+
+Everyday boards (`completionPolicy: manual`) use human-reviewed completion.
+Keep AI results in Review until the user accepts them. They do not require GitHub.
+Never apply everyday completion to a software board.

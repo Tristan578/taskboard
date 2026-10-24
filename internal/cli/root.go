@@ -29,7 +29,8 @@ var (
 func NewRootCmd(webFS fs.FS) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "player2-kanban",
-		Short: "Agent-native local project management with GitHub sync and MCP",
+		Short: "A useful place for your plans, tasks, and AI work",
+		RunE:  func(cmd *cobra.Command, args []string) error { return openDesktop(3010, false) },
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to SQLite database file (default: OS config dir)")
 
@@ -146,7 +147,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 	}
 	clearCmd.Flags().BoolP("force", "f", false, "skip confirmation prompt")
 
-	root.AddCommand(startCmd, stopCmd, mcpCmd, clearCmd, activityCommands(), statusCommand(), runCommand())
+	root.AddCommand(openCommand(), startCmd, stopCmd, mcpCmd, clearCmd, activityCommands(), statusCommand(), runCommand())
 	root.AddCommand(projectCommands())
 	root.AddCommand(teamCommands())
 	root.AddCommand(ticketCommands())
@@ -158,6 +159,9 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 
 func Execute(webFS fs.FS) {
 	if err := NewRootCmd(webFS).Execute(); err != nil {
+		if len(os.Args) == 1 {
+			showLaunchError(err)
+		}
 		os.Exit(1)
 	}
 }

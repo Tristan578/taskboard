@@ -1,6 +1,11 @@
 name: Release
 
 on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/release.yml'
   push:
     tags:
       - "v*"
@@ -13,6 +18,9 @@ permissions:
 
 jobs:
   build:
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:
@@ -32,12 +40,12 @@ jobs:
             goos: darwin
             goarch: arm64
             suffix: darwin-arm64
-          - os: ubuntu-latest
+          - os: windows-latest
             goos: windows
             goarch: amd64
             suffix: windows-amd64
 
-          - os: ubuntu-latest
+          - os: windows-latest
             goos: windows
             goarch: arm64
             suffix: windows-arm64
@@ -76,12 +84,29 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
           go build -ldflags="-s -w" -o "player2-kanban-${{ matrix.suffix }}${ext}" ./cmd/kanban
 
+      - name: Build Windows desktop launcher
+        if: matrix.goos == 'windows'
+        env:
+          CGO_ENABLED: "0"
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -ldflags="-s -w -H=windowsgui" -o Player2.exe ./cmd/kanban
+
+      - name: Build desktop installer
+        run: python packaging/package.py "${{ matrix.goos }}" "${{ matrix.goarch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.suffix }}
+          path: desktop/*
+
       - uses: actions/upload-artifact@v4
         with:
           name: player2-kanban-${{ matrix.suffix }}
           path: player2-kanban-${{ matrix.suffix }}*
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
 
@@ -95,6 +120,7 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release
+          cp artifacts/desktop-*/* release/
           for dir in artifacts/player2-kanban-*; do
             suffix=$(basename "$dir" | sed 's/^player2-kanban-//')
             if echo "$suffix" | grep -q "windows"; then
@@ -105,19 +131,24 @@ jobs:
               # Unix: create .tar.gz
               cp "$dir/player2-kanban-${suffix}" "release/player2-kanban"
               chmod +x "release/player2-kanban"
-              cd release && tar czf "player2-kanban-${suffix}.tar.gz" "player2-kanban" && rm "player2-kanban" && cd ..
+              if [[ "$suffix" == linux-* ]]; then cp packaging/Install.sh release/Install.sh; else printf '#!/bin/sh\nexec "$(dirname "$0")/player2-kanban" open\n' > release/Install.sh; fi
+              cd release && tar czf "player2-kanban-${suffix}.tar.gz" "player2-kanban" "Install.sh" && rm "player2-kanban" "Install.sh" && cd ..
             fi
           done
 
       - name: Checksum release assets
         working-directory: release
-        run: sha256sum *.tar.gz *.zip > SHA256SUMS
+        run: sha256sum *.tar.gz *.zip *.deb *.pkg *.exe > SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             release/*.tar.gz
             release/*.zip
+            release/*.deb
+            release/*.pkg
+            release/*.exe
             release/SHA256SUMS

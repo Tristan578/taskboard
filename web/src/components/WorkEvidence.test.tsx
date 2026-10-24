@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WorkEvidence from './WorkEvidence';
 import { api, type Ticket } from '../api/client';
-vi.mock('../api/client', () => ({ api: {tickets: {complete: vi.fn(), resolve: vi.fn()}} }));
+vi.mock('../api/client', () => ({ api: {tickets: {move: vi.fn(), complete: vi.fn(), resolve: vi.fn()}} }));
 afterEach(() => {cleanup(); vi.clearAllMocks();});
 const ticket = {id:'t1', title:'Task', status:'review', work:{agent:'Codex',sessionId:'one',summary:'Tests passed; awaiting merge',stale:false}} as Ticket;
 describe('verified completion',()=>{
@@ -28,4 +28,12 @@ describe('verified completion',()=>{
   await userEvent.click(screen.getByRole('button',{name:'Use GitHub version'}));
   expect(api.tickets.resolve).toHaveBeenCalledWith('t1','remote');
  });
+});
+
+it('lets a person confirm an everyday task without GitHub evidence',async()=>{
+ vi.mocked(api.tickets.move).mockResolvedValue({...ticket,status:'done'});const refresh=vi.fn();
+ render(<WorkEvidence ticket={ticket} manual onRefresh={refresh}/>);
+ expect(screen.queryByLabelText('Completion evidence URL')).toBeNull();
+ await userEvent.click(screen.getByRole('button',{name:'Mark done'}));
+ expect(api.tickets.move).toHaveBeenCalledWith('t1','done');expect(refresh).toHaveBeenCalledOnce();
 });

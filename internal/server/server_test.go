@@ -743,7 +743,7 @@ func TestServer_ValidationErrors(t *testing.T) {
 		// Create project missing name
 		{"project missing name", "POST", "/api/projects", `{"prefix":"X"}`, http.StatusBadRequest},
 		// Create project missing prefix
-		{"project missing prefix", "POST", "/api/projects", `{"name":"X"}`, http.StatusBadRequest},
+		{"project generates prefix", "POST", "/api/projects", `{"name":"X"}`, http.StatusCreated},
 		// Create label missing name
 		{"label missing name", "POST", "/api/labels", `{"color":"red"}`, http.StatusBadRequest},
 		// Create label missing color
@@ -845,7 +845,7 @@ func TestServer_WebFS_SPA(t *testing.T) {
 
 	_, _ = database.Exec(`
 		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
- CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
@@ -1186,7 +1186,7 @@ func setupTestServerWithDB(t *testing.T) (*Server, *db.Store, *sql.DB, func()) {
 
 	_, _ = database.Exec(`
 		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
- CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
@@ -1368,7 +1368,7 @@ func TestServer_ListenAndServe(t *testing.T) {
 
 	_, _ = database.Exec(`
 		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
- CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
@@ -1676,7 +1676,7 @@ func TestServer_HealthCheck_Degraded(t *testing.T) {
 
 	_, _ = database.Exec(`
 		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
- CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE tickets (revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);

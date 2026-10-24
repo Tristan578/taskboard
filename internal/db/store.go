@@ -87,7 +87,7 @@ func (s *Store) ListProjects(status string, limitOffset ...int) ([]models.Projec
 	}
 
 	// #nosec G202 -- whereClause contains fixed SQL literals; user values use placeholders.
-	query := "SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, created_at, updated_at FROM projects" + whereClause + " ORDER BY created_at DESC"
+	query := "SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, completion_policy, created_at, updated_at FROM projects" + whereClause + " ORDER BY created_at DESC"
 
 	// Apply pagination if provided
 	if len(limitOffset) >= 2 && limitOffset[0] > 0 {
@@ -105,7 +105,7 @@ func (s *Store) ListProjects(status string, limitOffset ...int) ([]models.Projec
 	var projects []models.Project
 	for rows.Next() {
 		var p models.Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.Prefix, &p.Description, &p.Icon, &p.Color, &p.Status, &p.GitHubRepo, &p.GitHubLastSynced, &p.Strict, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Prefix, &p.Description, &p.Icon, &p.Color, &p.Status, &p.GitHubRepo, &p.GitHubLastSynced, &p.Strict, &p.CompletionPolicy, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		projects = append(projects, p)
@@ -116,8 +116,8 @@ func (s *Store) ListProjects(status string, limitOffset ...int) ([]models.Projec
 func (s *Store) GetProject(id string) (*models.Project, error) {
 	var p models.Project
 	err := s.db.QueryRow(
-		"SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, created_at, updated_at FROM projects WHERE id = ?", id,
-	).Scan(&p.ID, &p.Name, &p.Prefix, &p.Description, &p.Icon, &p.Color, &p.Status, &p.GitHubRepo, &p.GitHubLastSynced, &p.Strict, &p.CreatedAt, &p.UpdatedAt)
+		"SELECT id, name, prefix, description, icon, color, status, github_repo, github_last_synced, strict, completion_policy, created_at, updated_at FROM projects WHERE id = ?", id,
+	).Scan(&p.ID, &p.Name, &p.Prefix, &p.Description, &p.Icon, &p.Color, &p.Status, &p.GitHubRepo, &p.GitHubLastSynced, &p.Strict, &p.CompletionPolicy, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -125,26 +125,42 @@ func (s *Store) GetProject(id string) (*models.Project, error) {
 }
 
 func (s *Store) CreateProject(req models.CreateProjectRequest) (*models.Project, error) {
+	if req.CompletionPolicy == "" {
+		req.CompletionPolicy = "verified"
+	}
+	if req.CompletionPolicy != "verified" && req.CompletionPolicy != "manual" {
+		return nil, invalid("choose verified or manual completion")
+	}
+	if req.CompletionPolicy == "manual" && req.GitHubRepo != "" {
+		return nil, invalid("GitHub linking requires a software board")
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, invalid("board name is required")
+	}
+	if req.Prefix == "" {
+		req.Prefix = "P" + newID()[18:]
+	}
 	p := models.Project{
-		ID:          newID(),
-		Name:        req.Name,
-		Prefix:      req.Prefix,
-		Description: req.Description,
-		Icon:        req.Icon,
-		Color:       req.Color,
-		Status:      "active",
-		GitHubRepo:  req.GitHubRepo,
-		Strict:      req.Strict,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CompletionPolicy: req.CompletionPolicy,
+		ID:               newID(),
+		Name:             req.Name,
+		Prefix:           req.Prefix,
+		Description:      req.Description,
+		Icon:             req.Icon,
+		Color:            req.Color,
+		Status:           "active",
+		GitHubRepo:       req.GitHubRepo,
+		Strict:           req.Strict,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 	if p.Color == "" {
 		p.Color = "#3B82F6"
 	}
 
 	_, err := s.db.Exec(
-		"INSERT INTO projects (id, name, prefix, description, icon, color, status, github_repo, strict, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		p.ID, p.Name, p.Prefix, p.Description, p.Icon, p.Color, p.Status, p.GitHubRepo, p.Strict, p.CreatedAt, p.UpdatedAt,
+		"INSERT INTO projects (id, name, prefix, description, icon, color, status, github_repo, strict, completion_policy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		p.ID, p.Name, p.Prefix, p.Description, p.Icon, p.Color, p.Status, p.GitHubRepo, p.Strict, p.CompletionPolicy, p.CreatedAt, p.UpdatedAt,
 	)
 	return &p, err
 }
@@ -174,6 +190,9 @@ func (s *Store) UpdateProject(id string, req models.UpdateProjectRequest) (*mode
 		p.Status = *req.Status
 	}
 	if req.GitHubRepo != nil {
+		if p.CompletionPolicy == "manual" && *req.GitHubRepo != "" {
+			return nil, invalid("GitHub linking requires a software board")
+		}
 		p.GitHubRepo = *req.GitHubRepo
 	}
 	if req.Strict != nil {

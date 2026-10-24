@@ -1,8 +1,13 @@
 # Player2 agent workflow rebuild
 
 Player2 helps people completing tasks with AI see current work, identify stalled
-work, and verify completion. This is a local developer tool with a browser UI,
-Go/SQLite storage, an npm installer and provider-neutral MCP/CLI interfaces.
+work, and verify completion. This runs locally with a browser UI,
+Go/SQLite storage, desktop/npm installers and provider-neutral MCP/CLI interfaces.
+The [guided start](usability.md) adds an everyday path for nontechnical users.
+
+Existing boards retain this software policy. New everyday boards explicitly use
+human-reviewed completion and do not require GitHub. This broadens the audience
+without treating human confirmation as verified software delivery.
 
 ## Decisions confirmed by Tristan
 
@@ -17,7 +22,7 @@ Go/SQLite storage, an npm installer and provider-neutral MCP/CLI interfaces.
 
 Todo (draft or published), In Progress, Review, Blocked, Done are supported through
 browser, CLI and MCP. Shared database methods validate status, title, priority and
-strict-mode requirements. A new Done transition requires completion verification.
+strict-mode requirements. On software boards, a new Done transition requires completion verification.
 A merged PR or latest successful deployment in the linked GitHub repository is
 checked through GitHub's API. The caller associates that evidence with the task;
 Player2 does not prove that the PR implements the acceptance criteria.

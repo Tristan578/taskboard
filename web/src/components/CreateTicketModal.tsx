@@ -8,16 +8,18 @@ export default function CreateTicketModal({
   projects,
   teams,
   defaultStatus,
+  defaultProjectId,
   onClose,
   onCreate,
 }: {
   projects: Project[];
   teams: Team[];
   defaultStatus?: string;
+  defaultProjectId?: string;
   onClose: () => void;
-  onCreate: (data: Partial<Ticket>) => void;
+  onCreate: (data: Partial<Ticket>) => void | Promise<void>;
 }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id || "");
+  const [projectId, setProjectId] = useState(defaultProjectId || projects[0]?.id || "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
@@ -28,9 +30,11 @@ export default function CreateTicketModal({
   const [technicalDetails, setTechnicalDetails] = useState("");
   const [testingDetails, setTestingDetails] = useState("");
 
+  const [busy,setBusy] = useState(false);
+  const [error,setError] = useState("");
   const project = projects.find((p) => p.id === projectId);
 
-  const handleSubmit = (e: React.FormEvent, asDraft: boolean = false) => {
+  const handleSubmit = async (e: React.FormEvent, asDraft: boolean = false) => {
     e.preventDefault();
     if (!title.trim() || !projectId) return;
 
@@ -39,12 +43,13 @@ export default function CreateTicketModal({
       return;
     }
 
-    onCreate({
+    setBusy(true); setError("");
+    try { await onCreate({
       projectId,
       title,
       description,
       priority,
-      status: defaultStatus || "todo",
+      status: defaultStatus === "done" ? "todo" : defaultStatus || "todo",
       dueDate: dueDate || undefined,
       teamId: teamId || undefined,
       userStory,
@@ -52,23 +57,24 @@ export default function CreateTicketModal({
       technicalDetails,
       testingDetails,
       isDraft: asDraft,
-    });
+    }); } catch(e) { setError(e instanceof Error ? e.message : "Could not save this task. Please try again."); } finally { setBusy(false); }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <form
+        aria-label="New task"
         onSubmit={(e) => handleSubmit(e)}
-        className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-xl p-6 space-y-5"
+        className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-xl p-6 space-y-5 max-h-[90dvh] overflow-auto"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">New Ticket</h2>
+          <h2 className="text-lg font-semibold text-white">New task</h2>
           <button
             type="button"
             onClick={onClose}
             className="text-slate-500 hover:text-slate-300 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X aria-label="Close" className="w-5 h-5" />
           </button>
         </div>
 
@@ -107,7 +113,7 @@ export default function CreateTicketModal({
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Description
+              Notes
             </label>
             <textarea
               value={description}
@@ -211,6 +217,7 @@ export default function CreateTicketModal({
           </div>
         </div>
 
+        {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
         <div className="flex justify-end gap-3 pt-2">
           <button
             type="button"
@@ -228,9 +235,10 @@ export default function CreateTicketModal({
           </button>
           <button
             type="submit"
+            disabled={busy}
             className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
           >
-            Create Ticket
+            Add task
           </button>
         </div>
       </form>

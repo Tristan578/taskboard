@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type Ticket } from "../api/client";
 
-export default function WorkEvidence({ ticket, onRefresh }: {ticket: Ticket; onRefresh: () => void}) {
+export default function WorkEvidence({ ticket, onRefresh, manual = false }: {ticket: Ticket; onRefresh: () => void; manual?: boolean}) {
  const [evidence, setEvidence] = useState("");
  const [busy, setBusy] = useState(false);
  const [error, setError] = useState("");
@@ -9,6 +9,7 @@ export default function WorkEvidence({ ticket, onRefresh }: {ticket: Ticket; onR
   setBusy(true); setError("");
   try { await action(); onRefresh(); } catch(e) {setError(e instanceof Error ? e.message : "Action failed");} finally {setBusy(false);}
  }
+ if(manual) return <section className="space-y-3 rounded-xl border border-slate-700 p-4"><h3 className="font-medium">Review the result</h3><p className="text-sm text-slate-300">You decide when this task is complete. Check the result before marking it done.</p>{ticket.status!=="done"?<button className="easy-button" disabled={busy} onClick={()=>act(()=>api.tickets.move(ticket.id,"done"))}>{busy?"Saving…":"Mark done"}</button>:<p className="text-teal-300">Marked done on your everyday board.</p>}{error&&<p role="alert" className="text-rose-300">{error}</p>}</section>;
  return <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-950 p-4">
   <h3 className="text-sm font-semibold text-white">Work & evidence</h3>
   <p className="text-xs text-slate-400">{ticket.work?.agent ? `${ticket.work.agent} · ${ticket.work.stale ? "Activity stale" : "Recent activity"}` : "No agent activity reported"}</p>

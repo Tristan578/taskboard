@@ -42,7 +42,7 @@ func (s *Store) validateTicket(t *models.Ticket, previousStatus string) error {
 	if t.IsDraft && t.Status != "todo" {
 		return invalid("drafts must remain in Todo; publish the ticket before starting work")
 	}
-	if t.Status == "done" && previousStatus != "done" {
+	if t.Status == "done" && previousStatus != "done" && p.CompletionPolicy != "manual" {
 		return invalid("Done requires verified merge or deployment evidence; use complete_ticket or ticket complete")
 	}
 	return nil
