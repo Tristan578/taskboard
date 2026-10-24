@@ -81,7 +81,7 @@ func (s *Store) ReportActivity(id string, a models.ActivityRequest) (*models.Tic
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var session string
 	var heartbeat sql.NullTime
 	err = tx.QueryRow("SELECT session_id,heartbeat_at FROM work_state WHERE ticket_id=?", id).Scan(&session, &heartbeat)
@@ -121,7 +121,7 @@ func (s *Store) CompleteVerified(id, url string) (*models.Ticket, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UTC()
 	if _, err = tx.Exec(`INSERT INTO work_state(ticket_id,completion_url,completed_at) VALUES(?,?,?) ON CONFLICT(ticket_id) DO UPDATE SET completion_url=excluded.completion_url,completed_at=excluded.completed_at`, id, url, now); err != nil {
 		return nil, err

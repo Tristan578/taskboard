@@ -17,7 +17,7 @@ func TestReconciliationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := db.NewStore(database)
 	project, err := store.CreateProject(models.CreateProjectRequest{Name: "Sync", Prefix: "SYNC", GitHubRepo: "o/r"})
 	if err != nil {
@@ -38,7 +38,7 @@ func TestReconciliationLifecycle(t *testing.T) {
 			for _, i := range issues {
 				nodes = append(nodes, map[string]any{"number": i.Number, "title": i.Title, "body": i.Body, "state": strings.ToUpper(i.State), "updatedAt": "2026-01-01T00:00:00Z", "labels": map[string]any{"nodes": []any{}}})
 			}
-			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}}}}})
 			return
 		}
 		if failWrites {
@@ -46,19 +46,19 @@ func TestReconciliationLifecycle(t *testing.T) {
 			return
 		}
 		var input struct{ Title, Body, State string }
-		json.NewDecoder(r.Body).Decode(&input)
+		_ = json.NewDecoder(r.Body).Decode(&input)
 		n := 1
 		if r.Method == "POST" {
 			creates++
 		} else {
-			fmt.Sscanf(r.URL.Path, "/repos/o/r/issues/%d", &n)
+			_, _ = fmt.Sscanf(r.URL.Path, "/repos/o/r/issues/%d", &n)
 		}
 		if input.State == "" {
 			input.State = "open"
 		}
 		issues[n] = Issue{Number: n, Title: input.Title, Body: input.Body, State: input.State}
 		writes++
-		json.NewEncoder(w).Encode(map[string]any{"number": n})
+		_ = json.NewEncoder(w).Encode(map[string]any{"number": n})
 	}))
 	defer srv.Close()
 	client := NewClientWithURLs(context.Background(), "token", srv.URL, srv.URL+"/graphql")
@@ -157,7 +157,7 @@ func TestCreateSuccessAtLowRateLimitIsAcknowledged(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-RateLimit-Limit", "5000")
 		w.Header().Set("X-RateLimit-Remaining", "1")
-		w.Write([]byte(`{"number":42}`))
+		_, _ = w.Write([]byte(`{"number":42}`))
 	}))
 	defer srv.Close()
 	c := NewClientWithURLs(context.Background(), "token", srv.URL, srv.URL)
@@ -172,7 +172,7 @@ func TestRetryAdoptsRemoteIssueByStableIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := db.NewStore(database)
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P", Prefix: "P", GitHubRepo: "o/r"})
 	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "Task"})
@@ -181,13 +181,13 @@ func TestRetryAdoptsRemoteIssueByStableIdentity(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/graphql" {
-			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{"nodes": []any{map[string]any{"number": 9, "title": "Task", "body": body, "state": "OPEN", "updatedAt": "2026-01-01T00:00:00Z", "labels": map[string]any{"nodes": []any{}}}}, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{"nodes": []any{map[string]any{"number": 9, "title": "Task", "body": body, "state": "OPEN", "updatedAt": "2026-01-01T00:00:00Z", "labels": map[string]any{"nodes": []any{}}}}, "pageInfo": map[string]any{"hasNextPage": false}}}}})
 			return
 		}
 		if r.Method == "POST" {
 			creates++
 		}
-		w.Write([]byte(`{"number":9}`))
+		_, _ = w.Write([]byte(`{"number":9}`))
 	}))
 	defer srv.Close()
 	c := NewClientWithURLs(context.Background(), "token", srv.URL, srv.URL+"/graphql")

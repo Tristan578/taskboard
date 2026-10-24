@@ -16,7 +16,7 @@ func TestActivityCLIAndDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := db.NewStore(database)
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P", Prefix: "P"})
 	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "Task"})

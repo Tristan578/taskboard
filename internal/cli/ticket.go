@@ -22,6 +22,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			tickets, _, err := store.ListTickets(models.TicketFilter{
 				ProjectID: projectID,
 				Status:    status,
@@ -56,6 +58,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			title, _ := cmd.Flags().GetString("title")
 			req := models.CreateTicketRequest{
 				ProjectID:          createProject,
@@ -106,6 +110,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			t, err := store.MoveTicket(args[0], models.MoveTicketRequest{Status: moveStatus})
 			if err != nil {
 				return err
@@ -129,6 +135,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			// Check existence for clean output
 			t, _ := store.GetTicket(args[0])
 			if t == nil {
@@ -156,6 +164,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			st, err := store.AddSubtask(args[0], models.CreateSubtaskRequest{Title: args[1]})
 			if err != nil {
 				return err
@@ -174,6 +184,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			st, err := store.ToggleSubtask(args[0])
 			if err != nil {
 				return err
@@ -195,6 +207,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			st, _ := store.GetSubtask(args[0])
 			if st == nil {
 				return fmt.Errorf("subtask not found")

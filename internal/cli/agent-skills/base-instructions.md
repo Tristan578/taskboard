@@ -33,3 +33,10 @@ The browser process performs background GitHub reconciliation and needs
 GITHUB_TOKEN in its environment. Remote/cloud agents need an explicitly
 configured connection to the same workspace; installing a rule alone does not
 connect them. Devin instructions must be added to the agent's configured knowledge.
+
+For local CLI agents, the developer can launch through Player2:
+`player2-kanban run --ticket <id> --agent Codex -- codex <arguments>`.
+This claims the task and sends process heartbeats automatically. Successful exit
+moves In Progress to Review; failed/interrupted exit moves it to Blocked. The
+process heartbeat is not evidence of implementation progress. Continue reporting
+meaningful work summaries through the normal tools when possible.

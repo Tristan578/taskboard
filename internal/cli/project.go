@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/github"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/spf13/cobra"
 )
 
 func projectCommands() *cobra.Command {
@@ -23,6 +23,8 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			projects, _, err := store.ListProjects("")
 			if err != nil {
 				return err
@@ -52,6 +54,8 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			p, err := store.CreateProject(models.CreateProjectRequest{
 				Name:   args[0],
 				Prefix: prefix,
@@ -79,6 +83,8 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			if err := store.DeleteProject(args[0]); err != nil {
 				return err
 			}
@@ -96,6 +102,8 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			repo := args[1]
 			_, err = store.UpdateProject(args[0], models.UpdateProjectRequest{
 				GitHubRepo: &repo,
@@ -118,6 +126,8 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 
 			if syncAsync {
 				if err := store.QueueSyncJob(args[0], "", "full_sync", nil); err != nil {
@@ -150,6 +160,8 @@ func projectCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			status, err := store.GetSyncStatus()
 			if err != nil {
 				return err

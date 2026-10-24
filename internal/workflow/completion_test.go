@@ -13,13 +13,13 @@ func TestVerifyEvidence(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/repos/o/r/pulls/1":
-			w.Write([]byte(`{"merged":true,"merged_at":"2026-01-01T00:00:00Z"}`))
+			_, _ = w.Write([]byte(`{"merged":true,"merged_at":"2026-01-01T00:00:00Z"}`))
 		case "/repos/o/r/pulls/2":
-			w.Write([]byte(`{"merged":false}`))
+			_, _ = w.Write([]byte(`{"merged":false}`))
 		case "/repos/o/r/deployments/1/statuses":
-			w.Write([]byte(`[{"state":"success"}]`))
+			_, _ = w.Write([]byte(`[{"state":"success"}]`))
 		case "/repos/o/r/deployments/2/statuses":
-			w.Write([]byte(`[{"state":"failure"},{"state":"success"}]`))
+			_, _ = w.Write([]byte(`[{"state":"failure"},{"state":"success"}]`))
 		default:
 			w.WriteHeader(404)
 		}

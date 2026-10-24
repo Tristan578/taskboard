@@ -17,6 +17,8 @@ func activityCommands() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
+		defer func() { _ = s.Close() }()
 		t, err := s.ReportActivity(args[0], a)
 		if err != nil {
 			return err
@@ -35,6 +37,8 @@ func completeCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
+		defer func() { _ = s.Close() }()
 		t, err := workflow.Complete(cmd.Context(), s, args[0], evidence)
 		if err != nil {
 			return err
@@ -51,6 +55,8 @@ func statusCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
+		defer func() { _ = s.Close() }()
 		sync, err := s.GetSyncStatus()
 		if err != nil {
 			return err

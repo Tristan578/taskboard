@@ -44,6 +44,8 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
+
+			defer func() { _ = database.Close() }()
 			store := db.NewStore(database)
 
 			// Start background worker if GITHUB_TOKEN is set
@@ -106,6 +108,8 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
+
+			defer func() { _ = database.Close() }()
 			store := db.NewStore(database)
 			server := mcp.NewServer(store)
 			return server.Run(os.Stdin, os.Stdout)
@@ -131,6 +135,8 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("opening database: %w", err)
 			}
+
+			defer func() { _ = store.Close() }()
 			if err := store.ClearData(); err != nil {
 				return fmt.Errorf("clearing data: %w", err)
 			}
@@ -140,7 +146,7 @@ func NewRootCmd(webFS fs.FS) *cobra.Command {
 	}
 	clearCmd.Flags().BoolP("force", "f", false, "skip confirmation prompt")
 
-	root.AddCommand(startCmd, stopCmd, mcpCmd, clearCmd, activityCommands(), statusCommand())
+	root.AddCommand(startCmd, stopCmd, mcpCmd, clearCmd, activityCommands(), statusCommand(), runCommand())
 	root.AddCommand(projectCommands())
 	root.AddCommand(teamCommands())
 	root.AddCommand(ticketCommands())
@@ -168,6 +174,7 @@ func openStore() (*db.Store, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return db.NewStore(database), nil
 }
 

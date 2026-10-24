@@ -54,6 +54,11 @@ browser origins are rejected, including the terminal WebSocket. Local processes 
 trusted. Do not expose this server through a tunnel or network proxy. There is no
 remote multi-user authentication service in this version.
 
+The `run` launcher wraps an explicitly supplied local agent command. It claims the
+ticket, moves it to In Progress, emits process heartbeats every minute and moves
+it to Review or Blocked on process exit. A successful process exit does not prove
+acceptance criteria or tests passed. Loss of tracking stops the child process.
+
 ## Agent connection
 
 Run `player2-kanban agent-config install all` in each repository. Installation uses
@@ -111,7 +116,7 @@ by this development branch. Windows ARM64 is built; native ARM64 execution needs
 
 ## Development verification
 
-- Full Go suite: passed; statement coverage 82.0% (75% required).
+- Full Go suite: passed; statement coverage 76.6% with `./...` (75% required), including Go code shipped inside npm dependencies; repository-owned packages cover 81.9%.
 - Go race detector on internal packages: passed.
 - go vet: passed. gosec v2.22.0: passed.
 - Frontend: five component tests, ESLint and production build passed.

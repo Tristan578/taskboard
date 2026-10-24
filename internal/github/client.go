@@ -177,14 +177,6 @@ func (c *Client) GetIssues(ctx context.Context, owner, repo string) ([]Issue, er
 	return allIssues, nil
 }
 
-func checkRateLimit(resp *github.Response) error {
-	storeRateLimit(resp)
-	if resp != nil && resp.Rate.Limit > 0 && resp.Rate.Remaining < 10 {
-		return &RateLimitError{ResetAt: resp.Rate.Reset.Time}
-	}
-	return nil
-}
-
 func (c *Client) CreateIssue(ctx context.Context, owner, repo string, title, body string) (int, error) {
 	issue, resp, err := c.rest.Issues.Create(ctx, owner, repo, &github.IssueRequest{
 		Title: &title,

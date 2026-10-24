@@ -226,3 +226,12 @@ The server is local-only; remote agents need a separately configured workspace.
 Conflicts preserve both versions until you choose one in the ticket panel. Failed
 sync appears on the board and can be retried. Stale activity does not automatically
 close a task. See [supported sync fields and limitations](docs/rebuild.md).
+
+To prevent a locally launched agent from skipping tracking, wrap its command:
+```bash
+player2-kanban run --ticket TICKET_ID --agent Codex -- codex
+# Or pass another installed agent command and its arguments after --.
+```
+The launcher claims the task, sends process heartbeats every minute, and moves
+In Progress to Review on successful exit or Blocked on failure. It never marks
+Done from an exit code. Remote/cloud agents still need their own MCP/CLI connection.

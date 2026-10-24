@@ -99,7 +99,7 @@ func SyncProject(ctx context.Context, client *Client, store SyncStore, projectID
 	if !locked {
 		return fmt.Errorf("project sync already running")
 	}
-	defer store.ReleaseSyncLock(projectID, lockID)
+	defer func() { _ = store.ReleaseSyncLock(projectID, lockID) }()
 	p, err := store.GetProject(projectID)
 	if err != nil {
 		return err
