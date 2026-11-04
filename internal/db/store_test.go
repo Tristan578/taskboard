@@ -13,23 +13,7 @@ import (
 )
 
 func setupTestStore(t *testing.T) (*Store, func()) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = db.Exec(`
-		PRAGMA foreign_keys = ON;
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id) ON DELETE CASCADE, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
-		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
-		CREATE TABLE subtasks (id TEXT PRIMARY KEY, ticket_id TEXT REFERENCES tickets(id) ON DELETE CASCADE, title TEXT, completed BOOLEAN DEFAULT 0, position INTEGER);
-		CREATE TABLE ticket_labels (ticket_id TEXT, label_id TEXT, PRIMARY KEY (ticket_id, label_id));
-		CREATE TABLE ticket_dependencies (ticket_id TEXT, blocked_by_id TEXT, PRIMARY KEY (ticket_id, blocked_by_id));
-		CREATE TABLE schema_migrations (version TEXT PRIMARY KEY);
-	`)
+	db, err := OpenAt(t.TempDir() + "/test.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,22 +27,28 @@ func TestDB_Lifecycle(t *testing.T) {
 
 	path := filepath.Join(tempDir, "test.db")
 	dbConn, err := OpenAt(path)
-	if err != nil { t.Fatalf("OpenAt failed: %v", err) }
+	if err != nil {
+		t.Fatalf("OpenAt failed: %v", err)
+	}
 	_ = dbConn.Close()
 
 	oldApp := os.Getenv("APPDATA")
 	os.Setenv("APPDATA", tempDir)
 	defer os.Setenv("APPDATA", oldApp)
-	
+
 	db2, err := Open()
-	if err == nil { _ = db2.Close() }
+	if err == nil {
+		_ = db2.Close()
+	}
 }
 
 func TestDB_OpenAt_Error(t *testing.T) {
 	tempDir, _ := os.MkdirTemp("", "db-err")
 	defer os.RemoveAll(tempDir)
 	_, err := OpenAt(tempDir)
-	if err == nil { t.Errorf("expected error") }
+	if err == nil {
+		t.Errorf("expected error")
+	}
 }
 
 func TestStore_Exhaustive_CRUD(t *testing.T) {
@@ -66,7 +56,7 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	defer cleanup()
 
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	
+
 	newName := "P2"
 	newPrefix := "P2X"
 	newDesc := "D2"
@@ -91,7 +81,7 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	_, _ = s.GetTeam(tm.ID)
 	_, _, _ = s.ListTeams()
 
-	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
+	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", UserStory: "As a user", AcceptanceCriteria: "Given a task"})
 	_, _ = s.UpdateTicket(tick.ID, models.UpdateTicketRequest{Title: &newName})
 	_, _ = s.GetTicket(tick.ID)
 	// Filter permutations
@@ -113,8 +103,8 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	_, _ = s.ToggleSubtask(st.ID)
 	_ = s.DeleteSubtask(st.ID)
 
-	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", Labels: []string{l.ID}, BlockedBy: []string{tick.ID}})
-	
+	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", UserStory: "As a user", AcceptanceCriteria: "Given a task", Labels: []string{l.ID}, BlockedBy: []string{tick.ID}})
+
 	ghn := 1
 	sha := "sha"
 	us := "us"
@@ -146,7 +136,9 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 	// Ensure ListDeletedTickets hits its loop
 	_ = s.DeleteTicket(tick.ID)
 	deleted, _ := s.ListDeletedTickets(p.ID)
-	if len(deleted) == 0 { t.Error("expected deleted ticket") }
+	if len(deleted) == 0 {
+		t.Error("expected deleted ticket")
+	}
 	_ = s.PurgeDeletedTickets(p.ID)
 	_ = s.DeleteTeam(tm.ID)
 	_ = s.DeleteLabel(l.ID)
@@ -157,39 +149,101 @@ func TestStore_Exhaustive_CRUD(t *testing.T) {
 func TestStore_Errors(t *testing.T) {
 	dbConn, _ := sql.Open("sqlite", ":memory:")
 	s := NewStore(dbConn)
-	_ = s.Close() 
+	_ = s.Close()
 
-	if _, err := s.CreateProject(models.CreateProjectRequest{}); err == nil { t.Errorf("1") }
-	if _, err := s.GetProject("1"); err == nil { t.Errorf("2") }
-	if _, err := s.UpdateProject("1", models.UpdateProjectRequest{}); err == nil { t.Errorf("3") }
-	if err := s.DeleteProject("1"); err == nil { t.Errorf("4") }
-	if _, err := s.CreateTeam(models.CreateTeamRequest{}); err == nil { t.Errorf("5") }
-	if _, err := s.GetTeam("1"); err == nil { t.Errorf("6") }
-	if _, err := s.UpdateTeam("1", models.UpdateTeamRequest{}); err == nil { t.Errorf("7") }
-	if err := s.DeleteTeam("1"); err == nil { t.Errorf("8") }
-	if _, err := s.CreateTicket(models.CreateTicketRequest{}); err == nil { t.Errorf("9") }
-	if _, err := s.GetTicket("1"); err == nil { t.Errorf("10") }
-	if _, err := s.UpdateTicket("1", models.UpdateTicketRequest{}); err == nil { t.Errorf("11") }
-	if _, err := s.MoveTicket("1", models.MoveTicketRequest{}); err == nil { t.Errorf("12") }
-	if err := s.DeleteTicket("1"); err == nil { t.Errorf("13") }
-	if _, err := s.CreateLabel(models.CreateLabelRequest{}); err == nil { t.Errorf("14") }
-	if _, err := s.GetLabel("1"); err == nil { t.Errorf("15") }
-	if _, err := s.UpdateLabel("1", models.UpdateLabelRequest{}); err == nil { t.Errorf("16") }
-	if err := s.DeleteLabel("1"); err == nil { t.Errorf("17") }
-	if _, err := s.AddSubtask("1", models.CreateSubtaskRequest{}); err == nil { t.Errorf("18") }
-	if _, err := s.ToggleSubtask("1"); err == nil { t.Errorf("19") }
-	if err := s.DeleteSubtask("1"); err == nil { t.Errorf("20") }
-	if err := s.ClearData(); err == nil { t.Errorf("21") }
-	if _, err := s.GetBoard("1"); err == nil { t.Errorf("22") }
-	if _, err := s.GetPendingSyncJobs(); err == nil { t.Errorf("23") }
-	if err := s.UpdateSyncJobStatus("1", "done", 1, ""); err == nil { t.Errorf("24") }
-	if _, _, err := s.ListProjects(""); err == nil { t.Errorf("25") }
-	if _, _, err := s.ListTeams(); err == nil { t.Errorf("26") }
-	if _, _, err := s.ListTickets(models.TicketFilter{}); err == nil { t.Errorf("27") }
-	if _, err := s.ListDeletedTickets("1"); err == nil { t.Errorf("28") }
-	if _, _, err := s.ListLabels(); err == nil { t.Errorf("29") }
-	if _, err := s.GetSubtask("1"); err == nil { t.Errorf("30") }
-	if err := s.PurgeDeletedTickets("1"); err == nil { t.Errorf("31") }
+	if _, err := s.CreateProject(models.CreateProjectRequest{}); err == nil {
+		t.Errorf("1")
+	}
+	if _, err := s.GetProject("1"); err == nil {
+		t.Errorf("2")
+	}
+	if _, err := s.UpdateProject("1", models.UpdateProjectRequest{}); err == nil {
+		t.Errorf("3")
+	}
+	if err := s.DeleteProject("1"); err == nil {
+		t.Errorf("4")
+	}
+	if _, err := s.CreateTeam(models.CreateTeamRequest{}); err == nil {
+		t.Errorf("5")
+	}
+	if _, err := s.GetTeam("1"); err == nil {
+		t.Errorf("6")
+	}
+	if _, err := s.UpdateTeam("1", models.UpdateTeamRequest{}); err == nil {
+		t.Errorf("7")
+	}
+	if err := s.DeleteTeam("1"); err == nil {
+		t.Errorf("8")
+	}
+	if _, err := s.CreateTicket(models.CreateTicketRequest{}); err == nil {
+		t.Errorf("9")
+	}
+	if _, err := s.GetTicket("1"); err == nil {
+		t.Errorf("10")
+	}
+	if _, err := s.UpdateTicket("1", models.UpdateTicketRequest{}); err == nil {
+		t.Errorf("11")
+	}
+	if _, err := s.MoveTicket("1", models.MoveTicketRequest{}); err == nil {
+		t.Errorf("12")
+	}
+	if err := s.DeleteTicket("1"); err == nil {
+		t.Errorf("13")
+	}
+	if _, err := s.CreateLabel(models.CreateLabelRequest{}); err == nil {
+		t.Errorf("14")
+	}
+	if _, err := s.GetLabel("1"); err == nil {
+		t.Errorf("15")
+	}
+	if _, err := s.UpdateLabel("1", models.UpdateLabelRequest{}); err == nil {
+		t.Errorf("16")
+	}
+	if err := s.DeleteLabel("1"); err == nil {
+		t.Errorf("17")
+	}
+	if _, err := s.AddSubtask("1", models.CreateSubtaskRequest{}); err == nil {
+		t.Errorf("18")
+	}
+	if _, err := s.ToggleSubtask("1"); err == nil {
+		t.Errorf("19")
+	}
+	if err := s.DeleteSubtask("1"); err == nil {
+		t.Errorf("20")
+	}
+	if err := s.ClearData(); err == nil {
+		t.Errorf("21")
+	}
+	if _, err := s.GetBoard("1"); err == nil {
+		t.Errorf("22")
+	}
+	if _, err := s.GetPendingSyncJobs(); err == nil {
+		t.Errorf("23")
+	}
+	if err := s.UpdateSyncJobStatus("1", "done", 1, ""); err == nil {
+		t.Errorf("24")
+	}
+	if _, _, err := s.ListProjects(""); err == nil {
+		t.Errorf("25")
+	}
+	if _, _, err := s.ListTeams(); err == nil {
+		t.Errorf("26")
+	}
+	if _, _, err := s.ListTickets(models.TicketFilter{}); err == nil {
+		t.Errorf("27")
+	}
+	if _, err := s.ListDeletedTickets("1"); err == nil {
+		t.Errorf("28")
+	}
+	if _, _, err := s.ListLabels(); err == nil {
+		t.Errorf("29")
+	}
+	if _, err := s.GetSubtask("1"); err == nil {
+		t.Errorf("30")
+	}
+	if err := s.PurgeDeletedTickets("1"); err == nil {
+		t.Errorf("31")
+	}
 }
 
 func TestStore_ClearData_Jobs(t *testing.T) {
@@ -202,9 +256,15 @@ func TestStore_ClearData_Jobs(t *testing.T) {
 func TestStore_Get_NotFound(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
-	if p, _ := s.GetProject("none"); p != nil { t.Errorf("1") }
-	if tick, _ := s.GetTicket("none"); tick != nil { t.Errorf("2") }
-	if st, _ := s.GetSubtask("none"); st != nil { t.Errorf("3") }
+	if p, _ := s.GetProject("none"); p != nil {
+		t.Errorf("1")
+	}
+	if tick, _ := s.GetTicket("none"); tick != nil {
+		t.Errorf("2")
+	}
+	if st, _ := s.GetSubtask("none"); st != nil {
+		t.Errorf("3")
+	}
 }
 
 func TestDB_DefaultDBPath_Fallback(t *testing.T) {
@@ -226,7 +286,7 @@ func TestDB_OpenAt_MkdirError(t *testing.T) {
 	// Use a path that's a file, so MkdirAll fails
 	tempFile, _ := os.CreateTemp("", "mkdir-err")
 	defer os.Remove(tempFile.Name())
-	
+
 	path := filepath.Join(tempFile.Name(), "db.sqlite")
 	_, err := OpenAt(path)
 	if err == nil {
@@ -237,7 +297,7 @@ func TestDB_OpenAt_MkdirError(t *testing.T) {
 func TestDB_runMigrations_Error(t *testing.T) {
 	dbConn, _ := sql.Open("sqlite", ":memory:")
 	_ = dbConn.Close() // Close it to make Exec fail
-	
+
 	err := runMigrations(dbConn)
 	if err == nil {
 		t.Error("expected error from runMigrations on closed DB")
@@ -247,24 +307,30 @@ func TestDB_runMigrations_Error(t *testing.T) {
 func TestDB_runMigrations_Idempotent(t *testing.T) {
 	dbConn, _ := sql.Open("sqlite", ":memory:")
 	defer dbConn.Close()
-	
+
 	err := runMigrations(dbConn)
-	if err != nil { t.Fatalf("first migration: %v", err) }
-	
+	if err != nil {
+		t.Fatalf("first migration: %v", err)
+	}
+
 	err = runMigrations(dbConn)
-	if err != nil { t.Fatalf("second migration: %v", err) }
+	if err != nil {
+		t.Fatalf("second migration: %v", err)
+	}
 }
 
 func TestStore_MoveTicket_Position(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
-	
+
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-	
+	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", UserStory: "As a user", AcceptanceCriteria: "Given a task"})
+
 	pos := 500.0
 	_, err := s.MoveTicket(tick.ID, models.MoveTicketRequest{Status: "in_progress", Position: &pos})
-	if err != nil { t.Fatalf("MoveTicket failed: %v", err) }
+	if err != nil {
+		t.Fatalf("MoveTicket failed: %v", err)
+	}
 }
 
 func TestStore_InvalidDate(t *testing.T) {
@@ -272,8 +338,9 @@ func TestStore_InvalidDate(t *testing.T) {
 	defer cleanup()
 	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	badDate := "not-a-date"
-	tick, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", DueDate: &badDate})
-	if tick.DueDate != nil { t.Errorf("1") }
+	if _, err := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", DueDate: &badDate}); err == nil {
+		t.Fatal("invalid due date accepted")
+	}
 }
 
 func TestStore_Pagination_Tickets(t *testing.T) {
@@ -392,7 +459,7 @@ func TestStore_BatchLoad(t *testing.T) {
 	t1, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", Labels: []string{l.ID}})
 	_, _ = s.AddSubtask(t1.ID, models.CreateSubtaskRequest{Title: "S1"})
 
-	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", BlockedBy: []string{t1.ID}})
+	t2, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T2", UserStory: "As a user", AcceptanceCriteria: "Given a task", BlockedBy: []string{t1.ID}})
 
 	// ListTickets uses batch loading now
 	tickets, _, err := s.ListTickets(models.TicketFilter{ProjectID: p.ID})
@@ -420,13 +487,19 @@ func TestStore_BatchLoad(t *testing.T) {
 
 func TestStore_NormalizePagination(t *testing.T) {
 	l, o := normalizePagination(0, 0)
-	if l != 50 || o != 0 { t.Errorf("default: got %d, %d", l, o) }
+	if l != 50 || o != 0 {
+		t.Errorf("default: got %d, %d", l, o)
+	}
 
 	l, o = normalizePagination(300, -5)
-	if l != 200 || o != 0 { t.Errorf("cap: got %d, %d", l, o) }
+	if l != 200 || o != 0 {
+		t.Errorf("cap: got %d, %d", l, o)
+	}
 
 	l, o = normalizePagination(10, 5)
-	if l != 10 || o != 5 { t.Errorf("normal: got %d, %d", l, o) }
+	if l != 10 || o != 5 {
+		t.Errorf("normal: got %d, %d", l, o)
+	}
 }
 
 func TestStore_Ping(t *testing.T) {

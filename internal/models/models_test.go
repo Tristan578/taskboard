@@ -11,7 +11,7 @@ func TestTicket_DisplayKey(t *testing.T) {
 	}{
 		{"With prefix", "AUTH", 42, "AUTH-42"},
 		{"Without prefix", "", 42, "42"},
-		{"Zero", "TASK", 0, "AUTH-0"}, // Wait,AUTH is hardcoded? No, it should be TASK-0. 
+		{"Zero", "TASK", 0, "AUTH-0"}, // Wait,AUTH is hardcoded? No, it should be TASK-0.
 		// Actually let's re-read DisplayKey logic.
 	}
 	_ = tests // Avoid unused error during thought

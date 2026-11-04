@@ -2,11 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const REPO = 'Tristan578/taskboard';
 const BINARY_NAME = 'player2-kanban';
-const BASE_URL = `https://github.com/${REPO}/releases/latest/download`;
+const VERSION = require('../package.json').version;
+const BASE_URL = `https://github.com/${REPO}/releases/download/v${VERSION}`;
+const crypto = require('node:crypto');
 
 const PLATFORM_MAP = {
   linux: 'linux',
@@ -39,11 +41,13 @@ function getAssetName() {
   return `${BINARY_NAME}-${suffix}${ext}`;
 }
 
-function followRedirects(url) {
+function followRedirects(url, redirects = 0) {
+  if (redirects > 5 || !url.startsWith("https://")) return Promise.reject(new Error("Invalid download redirect"));
   return new Promise((resolve, reject) => {
     https.get(url, { headers: { 'User-Agent': 'player2-kanban-installer' } }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        followRedirects(res.headers.location).then(resolve, reject);
+        res.resume();
+        followRedirects(new URL(res.headers.location, url).href, redirects + 1).then(resolve, reject);
         return;
       }
       if (res.statusCode === 404) {
@@ -75,18 +79,23 @@ function download(url, dest) {
   });
 }
 
+function verifyChecksum(data, manifest, assetName) {
+ const entry=manifest.split(/\r?\n/).map(line=>line.trim().split(/\s+/)).find(parts=>parts[1]===assetName);
+ const actual=crypto.createHash('sha256').update(data).digest('hex');
+ if(!entry || !/^[a-f0-9]{64}$/.test(entry[0]) || actual!==entry[0]) throw new Error('Release checksum verification failed');
+}
+
 function extractTarGz(archive, destDir) {
-  execSync(`tar xzf "${archive}" -C "${destDir}"`, { stdio: 'pipe' });
+  execFileSync("tar", ["xzf", archive, "-C", destDir], {stdio:"pipe"});
 }
 
 function extractZip(archive, destDir) {
   if (os.platform() === 'win32') {
-    execSync(
-      `powershell -NoProfile -Command "Expand-Archive -Path '${archive}' -DestinationPath '${destDir}' -Force"`,
-      { stdio: 'pipe' }
-    );
+    // Paths are arguments to PowerShell, never interpolated into executable script.
+    const script = "$a=$env:PLAYER2_ARCHIVE; $d=$env:PLAYER2_DEST; Expand-Archive -LiteralPath $a -DestinationPath $d -Force";
+    execFileSync('powershell', ['-NoProfile','-NonInteractive','-Command',script], {stdio:'pipe',env:{...process.env,PLAYER2_ARCHIVE:archive,PLAYER2_DEST:destDir}});
   } else {
-    execSync(`unzip -o "${archive}" -d "${destDir}"`, { stdio: 'pipe' });
+    execFileSync("unzip", ["-o",archive,"-d",destDir], {stdio:"pipe"});
   }
 }
 
@@ -94,7 +103,7 @@ async function install() {
   const assetName = getAssetName();
   const url = `${BASE_URL}/${assetName}`;
   const binDir = path.join(__dirname, '..', 'bin');
-  const tmpDir = path.join(__dirname, '..', '.tmp-install');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'player2-install-'));
 
   console.log(`Platform: ${os.platform()} | Arch: ${os.arch()}`);
   console.log(`Downloading ${assetName}...`);
@@ -107,6 +116,9 @@ async function install() {
 
   try {
     await download(url, archivePath);
+    const checksumPath=path.join(tmpDir,'SHA256SUMS');
+    await download(`${BASE_URL}/SHA256SUMS`,checksumPath);
+    verifyChecksum(fs.readFileSync(archivePath),fs.readFileSync(checksumPath,'utf8'),assetName);
   } catch (err) {
     // Clean up temp dir
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -121,7 +133,7 @@ async function install() {
       console.error('  cd taskboard');
       console.error('  make build');
       console.error('');
-      process.exit(0); // Exit cleanly so npm install doesn't fail hard
+      throw err; // A missing executable is an installation failure.
     }
     throw err;
   }
@@ -160,17 +172,7 @@ async function install() {
       fs.copyFileSync(expectedBinary, path.join(binDir, binaryName));
     }
 
-    // On Windows, also copy as the non-.exe name so npm's bin shim works.
-    // package.json "bin" points to ./bin/player2-kanban (no .exe).
-    if (os.platform() === 'win32') {
-      const withExt = path.join(binDir, binaryName);
-      const withoutExt = path.join(binDir, BINARY_NAME);
-      if (fs.existsSync(withExt) && withExt !== withoutExt) {
-        fs.copyFileSync(withExt, withoutExt);
-      }
-    } else {
-      fs.chmodSync(path.join(binDir, binaryName), 0o755);
-    }
+    if (os.platform() !== 'win32') fs.chmodSync(path.join(binDir,binaryName),0o755);
 
     console.log(`Installed ${binaryName} to ${binDir}`);
   } finally {
@@ -179,7 +181,9 @@ async function install() {
   }
 }
 
-install().catch((err) => {
+if (require.main === module) install().catch((err) => {
   console.error(`Installation failed: ${err.message}`);
   process.exit(1);
 });
+
+module.exports = {getAssetName, getBinaryName, followRedirects, extractTarGz, extractZip, verifyChecksum};

@@ -21,7 +21,7 @@ func hookCommands() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID := args[0]
-			
+
 			// Find .git directory
 			gitDir := ".git"
 			if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -37,7 +37,7 @@ func hookCommands() *cobra.Command {
 			for _, hook := range hooks {
 				hookPath := filepath.Join(hooksDir, hook)
 				content := fmt.Sprintf("#!/bin/sh\n# player2-kanban auto-sync hook\nif command -v player2-kanban >/dev/null 2>&1; then\n  player2-kanban project sync %s --async\nfi\n", projectID)
-				
+
 				// #nosec G306
 				if err := os.WriteFile(hookPath, []byte(content), 0700); err != nil {
 					return fmt.Errorf("writing %s hook: %w", hook, err)
@@ -90,4 +90,3 @@ func hookCommands() *cobra.Command {
 	cmd.AddCommand(installCmd, uninstallCmd)
 	return cmd
 }
-

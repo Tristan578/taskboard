@@ -1,0 +1,99 @@
+{
+  "scope": "Broad public desktop release; this is separate from reviewable implementation completion",
+  "gates": [
+    {
+      "id": "G1",
+      "domain": "data-integrity",
+      "severity": "critical",
+      "status": "pass",
+      "evidence": [
+        "internal/db/recovery_test.go",
+        "internal/recovery/manager_test.go"
+      ],
+      "owner": "engineering",
+      "notes": "Atomic restore, repeat creation and retry behavior exercised."
+    },
+    {
+      "id": "G2",
+      "domain": "security",
+      "severity": "critical",
+      "status": "pass",
+      "evidence": [
+        "internal/server/security_test.go",
+        "internal/server/connection_pilot_test.go",
+        "local gosec and schema allowlist tests",
+        "https://github.com/Tristan578/taskboard/actions/runs/40117820307/job/120942714669"
+      ],
+      "owner": "engineering",
+      "notes": "Local boundary, bounded requests/files and schema allowlist tests pass. Guided setup does not execute commands; foreign-origin pilot creation is rejected."
+    },
+    {
+      "id": "G3",
+      "domain": "native-installation",
+      "severity": "high",
+      "status": "pass",
+      "evidence": [
+        "https://github.com/Tristan578/taskboard/actions/runs/40117820320",
+        "packaging/smoke.py"
+      ],
+      "owner": "engineering",
+      "notes": "Commit 772babe: all six installer builds pass. Installed Linux x64, macOS ARM64 and Windows x64 checks exercise discovery, recovery, recurrence and the guided first task through the actual stdio MCP process. Windows uninstall preserves boards. Other architectures are build-only; interactive GUI behavior remains G5."
+    },
+    {
+      "id": "G4",
+      "domain": "live-github-read",
+      "severity": "high",
+      "status": "pass",
+      "evidence": [
+        "https://github.com/Tristan578/taskboard/actions/runs/40117820307/job/120942714786",
+        "internal/github/live_test.go"
+      ],
+      "owner": "engineering",
+      "notes": "Read-only live GitHub import passes at 772babe. Both job permissions and transport prohibit writes; real two-way writes remain G7."
+    },
+    {
+      "id": "G5",
+      "domain": "interactive-ux",
+      "severity": "high",
+      "status": "not-run",
+      "evidence": [
+        "Cloud browser returned ERR_CONNECTION_REFUSED for the running local app."
+      ],
+      "owner": "release owner",
+      "notes": "No participant sessions observed. Follow docs/first-user-pilot.md and usability-acceptance.md; component tests do not replace physical-device or accessibility checks."
+    },
+    {
+      "id": "G6",
+      "domain": "signed-distribution",
+      "severity": "critical",
+      "status": "not-run",
+      "evidence": [],
+      "owner": "release owner",
+      "notes": "Windows signing and Apple signing/notarization require release-owner credentials."
+    },
+    {
+      "id": "G7",
+      "domain": "live-github-writes",
+      "severity": "high",
+      "status": "not-run",
+      "evidence": [
+        "internal/github/reconcile_test.go"
+      ],
+      "owner": "release owner",
+      "notes": "Real two-way changes need an explicitly disposable linked repository; deterministic integration tests cover the lifecycle."
+    },
+    {
+      "id": "G8",
+      "domain": "live-agent-client",
+      "severity": "high",
+      "status": "not-run",
+      "evidence": [
+        "docs/agent-connection.md",
+        "docs/first-user-pilot.md"
+      ],
+      "owner": "release owner",
+      "notes": "Codex CLI and Claude Code setup syntax was checked against official documentation. Signed-in vendor clients are unavailable here. Native MCP protocol automation passes, but actual client setup and participant use require a live pilot."
+    }
+  ],
+  "tested_code_commit": "772babea8d81e6bf46445cf0d76a1b37556e54d9"
+}

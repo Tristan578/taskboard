@@ -2,8 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"github.com/Tristan578/taskboard/internal/models"
+	"github.com/spf13/cobra"
 )
 
 func ticketCommands() *cobra.Command {
@@ -12,6 +12,7 @@ func ticketCommands() *cobra.Command {
 		Short: "Manage tickets",
 	}
 
+	cmd.AddCommand(completeCommand())
 	var projectID, status, priority string
 	listCmd := &cobra.Command{
 		Use:   "list",
@@ -21,6 +22,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			tickets, _, err := store.ListTickets(models.TicketFilter{
 				ProjectID: projectID,
 				Status:    status,
@@ -41,10 +44,10 @@ func ticketCommands() *cobra.Command {
 		},
 	}
 	listCmd.Flags().StringVar(&projectID, "project", "", "filter by project ID")
-	listCmd.Flags().StringVar(&status, "status", "", "filter by status (todo|in_progress|done)")
+	listCmd.Flags().StringVar(&status, "status", "", "filter by status (todo|in_progress|review|blocked|done)")
 	listCmd.Flags().StringVar(&priority, "priority", "", "filter by priority (urgent|high|medium|low)")
 
-	var createProject, createPriority, createDue, createTeam string
+	var createProject, createPriority, createDue, createTeam, createRepeat string
 	var createDescription, createUserStory, createAC, createTechnical, createTesting string
 	var createDraft bool
 	createCmd := &cobra.Command{
@@ -55,8 +58,11 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			title, _ := cmd.Flags().GetString("title")
 			req := models.CreateTicketRequest{
+				RepeatRule:         createRepeat,
 				ProjectID:          createProject,
 				Title:              title,
 				Description:        createDescription,
@@ -87,6 +93,7 @@ func ticketCommands() *cobra.Command {
 	_ = createCmd.MarkFlagRequired("title")
 	createCmd.Flags().StringVar(&createDescription, "description", "", "ticket description")
 	createCmd.Flags().StringVar(&createPriority, "priority", "medium", "priority (urgent|high|medium|low)")
+	createCmd.Flags().StringVar(&createRepeat, "repeat", "", "repeat after completion (daily|weekly|monthly); requires --due")
 	createCmd.Flags().StringVar(&createDue, "due", "", "due date (YYYY-MM-DD)")
 	createCmd.Flags().StringVar(&createTeam, "team", "", "team ID")
 	createCmd.Flags().StringVar(&createUserStory, "user-story", "", "user story (As a... I want... So that...)")
@@ -105,6 +112,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			t, err := store.MoveTicket(args[0], models.MoveTicketRequest{Status: moveStatus})
 			if err != nil {
 				return err
@@ -128,6 +137,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			// Check existence for clean output
 			t, _ := store.GetTicket(args[0])
 			if t == nil {
@@ -155,6 +166,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			st, err := store.AddSubtask(args[0], models.CreateSubtaskRequest{Title: args[1]})
 			if err != nil {
 				return err
@@ -173,6 +186,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			st, err := store.ToggleSubtask(args[0])
 			if err != nil {
 				return err
@@ -194,6 +209,8 @@ func ticketCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			defer func() { _ = store.Close() }()
 			st, _ := store.GetSubtask(args[0])
 			if st == nil {
 				return fmt.Errorf("subtask not found")

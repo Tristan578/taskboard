@@ -1,362 +1,228 @@
-import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, X, FolderKanban, ChevronDown, ChevronUp } from "lucide-react";
-import Markdown from "react-markdown";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, type Project } from "../api/client";
-
-const DEFAULT_COLORS = [
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#f97316",
-  "#14b8a6",
-  "#eab308",
-  "#ef4444",
-  "#06b6d4",
-];
-
-function ProjectModal({
+function EditBoard({
   project,
   onClose,
-  onSave,
+  onSaved,
 }: {
-  project?: Project;
+  project: Project;
   onClose: () => void;
-  onSave: (data: Partial<Project>) => void;
+  onSaved: () => void;
 }) {
-  const isEdit = !!project;
-  const [name, setName] = useState(project?.name || "");
-  const [prefix, setPrefix] = useState(project?.prefix || "");
-  const [description, setDescription] = useState(project?.description || "");
-  const [icon, setIcon] = useState(project?.icon || "📋");
-  const [color, setColor] = useState(project?.color || DEFAULT_COLORS[0]);
-  const [status, setStatus] = useState(project?.status || "active");
-  const [githubRepo, setGithubRepo] = useState(project?.githubRepo || "");
-  const [strict, setStrict] = useState(project?.strict || false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !prefix.trim()) return;
-    onSave({ name, prefix: prefix.toUpperCase(), description, icon, color, status, githubRepo, strict });
-  };
-
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description || "");
+  const [repo, setRepo] = useState(project.githubRepo || "");
+  const [strict, setStrict] = useState(project.strict);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.projects.update(project.id, {
+        name: name.trim(),
+        description,
+        githubRepo: repo,
+        strict,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center">
       <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-xl p-6 space-y-5 max-h-[90vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-board-title"
+        className="max-w-xl w-full bg-slate-900 rounded-2xl p-6 max-h-[90dvh] overflow-auto space-y-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
       >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">
-            {isEdit ? "Edit Project" : "New Project"}
-          </h2>
+        <h2 id="edit-board-title" className="text-xl font-semibold">
+          Edit board
+        </h2>
+        <label className="easy-label">
+          Name
+          <input
+            autoFocus
+            required
+            maxLength={120}
+            className="easy-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label className="easy-label">
+          Goal and notes
+          <textarea
+            rows={4}
+            className="easy-input"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+        <p className="text-sm text-slate-400">
+          {project.completionPolicy === "manual"
+            ? "Everyday board · you review and mark tasks done."
+            : "Software board · Done requires a verified merge or deployment."}{" "}
+          This choice stays with the board.
+        </p>
+        <details>
+          <summary className="cursor-pointer text-slate-300">Advanced</summary>
+          <div className="space-y-4 pt-4">
+            <p className="text-sm text-slate-400">
+              Task prefix: {project.prefix}
+            </p>
+            {project.completionPolicy !== "manual" && (
+              <>
+                <label className="easy-label">
+                  GitHub repository · optional
+                  <input
+                    className="easy-input"
+                    value={repo}
+                    onChange={(e) => setRepo(e.target.value)}
+                    placeholder="https://github.com/owner/repository"
+                  />
+                </label>
+                <Link className="text-teal-300 underline text-sm" to="/help">
+                  Connection instructions
+                </Link>
+                <label className="flex gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={strict}
+                    onChange={(e) => setStrict(e.target.checked)}
+                  />
+                  Require a user story and acceptance criteria before work
+                  starts
+                </label>
+              </>
+            )}
+          </div>
+        </details>
+        {error && (
+          <p role="alert" className="text-rose-300">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-3">
           <button
             type="button"
+            className="easy-secondary"
+            disabled={busy}
             onClick={onClose}
-            className="text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Name
-            </label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Project"
-              required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                Prefix
-              </label>
-              <input
-                value={prefix}
-                onChange={(e) => setPrefix(e.target.value.toUpperCase())}
-                placeholder="PRJ"
-                maxLength={5}
-                required
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                Icon
-              </label>
-              <input
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-center text-lg"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              GitHub Repository
-            </label>
-            <input
-              value={githubRepo}
-              onChange={(e) => setGithubRepo(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-             <input
-              type="checkbox"
-              id="strict-mode"
-              checked={strict}
-              onChange={(e) => setStrict(e.target.checked)}
-              className="w-4 h-4 bg-slate-800 border-slate-700 rounded text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="strict-mode" className="text-xs font-medium text-slate-400">
-              Strict Mode (Enforce Gherkin, User Story, Tech Specs)
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Supports markdown — goals, scope, and context for this project…"
-              rows={8}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
-            />
-          </div>
-
-          {isEdit && (
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                Status
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 capitalize"
-              >
-                <option value="active">Active</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Color
-            </label>
-            <div className="flex gap-2">
-              {DEFAULT_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-8 h-8 rounded-lg transition-all ${
-                    color === c
-                      ? "ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-110"
-                      : "hover:scale-105"
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
           >
             Cancel
           </button>
-          <button
-            type="submit"
-            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-          >
-            {isEdit ? "Save Changes" : "Create Project"}
+          <button className="easy-button" disabled={busy || !name.trim()}>
+            {busy ? "Saving…" : "Save changes"}
           </button>
         </div>
       </form>
     </div>
   );
 }
-
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [expandedDescs, setExpandedDescs] = useState<Set<string>>(new Set());
-
-  const toggleDesc = (id: string) => {
-    setExpandedDescs((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const load = useCallback(async () => {
+  async function load() {
     try {
-      const data = await api.projects.list();
-      setProjects(data || []);
+      setProjects((await api.projects.list()) || []);
+      setError("");
     } catch {
-      setProjects([]);
+      setError("Could not load your boards. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, []);
-
+  }
   useEffect(() => {
-    let mounted = true;
-    if (mounted) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      load();
+    void api.projects
+      .list()
+      .then((p) => setProjects(p || []))
+      .catch(() => setError("Could not load your boards. Please try again."))
+      .finally(() => setLoading(false));
+  }, []);
+  async function remove(p: Project) {
+    if (
+      !window.confirm(
+        `Delete “${p.name}” and all its tasks? Download a backup first if you may need them.`,
+      )
+    )
+      return;
+    try {
+      await api.projects.delete(p.id);
+      await load();
+    } catch {
+      setError("Could not delete this board. Please try again.");
     }
-    return () => {
-      mounted = false;
-    };
-  }, [load]);
-
-  const handleCreate = async (data: Partial<Project>) => {
-    await api.projects.create(data);
-    setShowCreate(false);
-    load();
-  };
-
-  const handleUpdate = async (data: Partial<Project>) => {
-    if (!editProject) return;
-    await api.projects.update(editProject.id, data);
-    setEditProject(null);
-    load();
-  };
-
-  const handleDelete = async (id: string) => {
-    await api.projects.delete(id);
-    load();
-  };
-
+  }
   return (
-    <div className="h-full flex flex-col">
-      <header className="shrink-0 flex items-center justify-between px-6 h-14 border-b border-slate-800">
-        <h1 className="text-lg font-semibold text-white">Projects</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Project
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-auto p-6">
-        {loading ? (
-          <div className="flex items-center justify-center h-64 text-slate-600">
-            Loading projects…
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-600 space-y-3">
-            <FolderKanban className="w-10 h-10 text-slate-700" />
-            <p className="text-sm">No projects yet</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                onClick={() => setEditProject(project)}
-                className="group relative bg-slate-900 border border-slate-700/50 hover:border-slate-600 rounded-xl p-5 transition-colors cursor-pointer"
-              >
-                <div
-                  className="absolute inset-x-0 top-0 h-1 rounded-t-xl"
-                  style={{ backgroundColor: project.color }}
-                />
-                <div className="flex items-start justify-between">
-                  <span className="text-2xl">{project.icon}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(project.id);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <h3 className="mt-3 text-sm font-semibold text-white">
-                  {project.name}
-                </h3>
-                {project.description && (
-                  <div className="mt-1">
-                     <div
-                      className={`prose-card overflow-hidden ${
-                        expandedDescs.has(project.id) ? "" : "line-clamp-4"
-                      }`}
-                    >
-                      <Markdown>{project.description}</Markdown>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleDesc(project.id);
-                      }}
-                      className="mt-1 inline-flex items-center gap-0.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-                    >
-                      {expandedDescs.has(project.id) ? (
-                        <>
-                          Show less <ChevronUp className="w-3 h-3" />
-                        </>
-                      ) : (
-                        <>
-                          Show more <ChevronDown className="w-3 h-3" />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-xs font-mono text-slate-500">
-                    {project.prefix}
-                  </span>
-                  <span
-                    className="inline-block w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  <span className="text-xs text-slate-500 capitalize">
-                    {project.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+    <div className="easy-page">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold">Your boards</h1>
+        <Link to="/welcome" className="easy-button">
+          New board
+        </Link>
       </div>
-
-      {showCreate && (
-        <ProjectModal
-          onClose={() => setShowCreate(false)}
-          onSave={handleCreate}
-        />
+      <p className="text-slate-400 mt-4">
+        A place for each goal, project, or part of your life.
+      </p>
+      {error && (
+        <div role="alert" className="mt-6 text-rose-300">
+          {error}{" "}
+          <button className="underline" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
       )}
-
-      {editProject && (
-        <ProjectModal
-          project={editProject}
-          onClose={() => setEditProject(null)}
-          onSave={handleUpdate}
+      {loading ? (
+        <p className="mt-8">Loading…</p>
+      ) : (
+        <div className="mt-8 divide-y divide-slate-800">
+          {!projects.length && !error && (
+            <p>No boards yet. Start with an example or your own idea.</p>
+          )}
+          {projects.map((p) => (
+            <div key={p.id} className="py-5 space-y-3">
+              <Link
+                to={`/board?project=${encodeURIComponent(p.id)}`}
+                className="text-xl font-medium text-teal-200"
+              >
+                {p.icon} {p.name}
+              </Link>
+              <p className="text-slate-400 line-clamp-2">{p.description}</p>
+              <div className="flex gap-4 text-sm">
+                <button className="underline" onClick={() => setEditing(p)}>
+                  Edit
+                </button>
+                <button
+                  className="text-slate-400 underline"
+                  onClick={() => void remove(p)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {editing && (
+        <EditBoard
+          project={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void load();
+          }}
         />
       )}
     </div>

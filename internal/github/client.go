@@ -23,8 +23,8 @@ type RateLimitInfo struct {
 
 // lastRateLimit stores the most recent rate limit info across all API calls.
 var (
-	lastRateLimit   *RateLimitInfo
-	rateLimitMu     sync.RWMutex
+	lastRateLimit *RateLimitInfo
+	rateLimitMu   sync.RWMutex
 )
 
 // GetLastRateLimit returns the most recently observed GitHub rate limit info.
@@ -177,12 +177,19 @@ func (c *Client) GetIssues(ctx context.Context, owner, repo string) ([]Issue, er
 	return allIssues, nil
 }
 
-func checkRateLimit(resp *github.Response) error {
-	storeRateLimit(resp)
-	if resp != nil && resp.Rate.Limit > 0 && resp.Rate.Remaining < 10 {
-		return &RateLimitError{ResetAt: resp.Rate.Reset.Time}
+// GetIssue reads one issue's current content immediately before a write, so a
+// push can be checked against edits made after the initial issue listing.
+func (c *Client) GetIssue(ctx context.Context, owner, repo string, number int) (Issue, error) {
+	gi, resp, err := c.rest.Issues.Get(ctx, owner, repo, number)
+	if err != nil {
+		return Issue{}, err
 	}
-	return nil
+	storeRateLimit(resp)
+	issue := Issue{Number: gi.GetNumber(), Title: gi.GetTitle(), Body: gi.GetBody(), State: gi.GetState(), UpdatedAt: gi.GetUpdatedAt().Time}
+	for _, label := range gi.Labels {
+		issue.Labels = append(issue.Labels, label.GetName())
+	}
+	return issue, nil
 }
 
 func (c *Client) CreateIssue(ctx context.Context, owner, repo string, title, body string) (int, error) {
@@ -193,9 +200,7 @@ func (c *Client) CreateIssue(ctx context.Context, owner, repo string, title, bod
 	if err != nil {
 		return 0, err
 	}
-	if rlErr := checkRateLimit(resp); rlErr != nil {
-		return issue.GetNumber(), rlErr
-	}
+	storeRateLimit(resp) // A successful write must not become a retryable failure.
 	return issue.GetNumber(), nil
 }
 
@@ -209,7 +214,8 @@ func (c *Client) UpdateIssue(ctx context.Context, owner, repo string, number int
 	if err != nil {
 		return err
 	}
-	return checkRateLimit(resp)
+	storeRateLimit(resp)
+	return nil
 }
 
 func ParseRepo(repoStr string) (owner, repo string, err error) {

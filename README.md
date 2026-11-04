@@ -1,23 +1,36 @@
 # Player2 Kanban
 
-**Player2 Kanban** is an agent-native, local-first project management tool. It bridges the gap between fast "vibe coding" and professional team workflows by syncing local tasks directly with GitHub Issues.
+> Preview: this branch adds guided setup and native desktop installers. It is not yet published on npm. PR artifacts are unsigned test builds; public distribution still needs signing and release validation.
 
-This project is a fork of the excellent [tcarac/taskboard](https://github.com/tcarac/taskboard), enhanced with deep AI agent integration, strict engineering standards enforcement, and bidirectional GitHub synchronization.
+**Player2** is a local board for your plans, tasks, and AI work. It helps you choose
+a next step, work with an AI tool you already use, and see what is ready for review.
+It does not include an AI service or build and host an app by itself.
 
-## Screenshots
+Built on [tcarac/taskboard](https://github.com/tcarac/taskboard).
 
-![Kanban Board](screenshots/board.png)
+## Start with something useful
 
-![Ticket Detail](screenshots/ticket-detail.png)
+Pick a goal: build a first app, organize shifts and tips, plan a household week,
+move your career forward, test a business idea, or ship technical work. Player2
+creates an editable starter board. You can use your existing AI chat through
+copy/paste, then add agent automation when you need it.
 
-## Key Enhancements
+- Two-step setup with no required account, repository, prefix, or API key.
+- Everyday boards let you review and complete tasks; software boards require
+  verified merge/deployment evidence.
+- Optional CLI/MCP agents, heartbeats, stale-work detection, and conflict-aware
+  GitHub issue synchronization.
+- **Connect my AI** guides local setup and verifies an agent report and saved
+  result through a useful first task, with an explicit manual path for chat users.
+- Local storage, daily automatic backups, previewed recovery and deleted-task Undo.
+- Daily, weekly and monthly repeats that create one next task after completion.
+- A **Next up** page for overdue work, reviews, and tasks that need help, with
+  search across task titles and notes.
+- Conflict checks protect browser edits from overwriting newer agent work;
+  unsaved changes stay open for comparison.
 
-- **Agent-Native Instructions** — Built-in commands to install `.cursorrules`, `.clauderules`, and `.gemini/GEMINI.md` to align AI assistants with your workflow.
-- **Hard-Enforced Standards** — CI/CD gates for 75%+ test coverage, `gosec` security scans, and mandatory linear git history.
-- **GitHub Sync Engine** — Bidirectional sync between local SQLite and GitHub Issues. Metadata is stored in hidden HTML comments.
-- **Strict Mode** — Enforce professional standards. When enabled, tickets *must* have a User Story and Acceptance Criteria (Gherkin) before they can be created or updated.
-- **Git Hooks** — Automated sync on `git push` and `git pull` via installed `pre-push` and `post-merge` hooks.
-- **Embedded Terminal** — Full interactive shell in the web UI. Uses ConPTY on Windows (PowerShell/cmd.exe) and PTY on macOS/Linux (bash/zsh). Run commands, AI agents, or debug directly from the board.
+[Install and create your first board](docs/getting-started.md) ·
+[Workflow and migration details](docs/rebuild.md) · [Usability scope](docs/usability.md)
 
 ## Requirements
 
@@ -26,6 +39,12 @@ This project is a fork of the excellent [tcarac/taskboard](https://github.com/tc
 - Works on **Windows**, **macOS**, and **Linux**
 
 ## Installation
+
+Desktop installers are built for Windows (`.exe`), macOS (`.pkg`) and Ubuntu/Debian
+(`.deb`), plus portable binaries for other Linux distributions. No Node.js or Go is
+required for desktop installation. See the [install guide](docs/getting-started.md)
+for the preview/release status and the correct download for your computer.
+
 
 ### Via NPM
 
@@ -54,9 +73,9 @@ go build -o player2-kanban ./cmd/kanban
 
 ## Setup & Usage
 
-### 1. Start the Server
+### 1. Open Player2
 ```bash
-player2-kanban start
+player2-kanban open
 # => Player2 Kanban running at http://localhost:3010 (pid 12345)
 ```
 
@@ -65,7 +84,7 @@ To run in the foreground (useful for development):
 player2-kanban start --foreground
 ```
 
-### 2. Connect to GitHub
+### 2. Optional: Connect to GitHub
 ```bash
 # Set your GitHub Personal Access Token
 export GITHUB_TOKEN="ghp_your_token_here"
@@ -80,7 +99,7 @@ player2-kanban project sync <project_id>
 player2-kanban project sync-status
 ```
 
-### 3. Install Auto-Sync Hooks
+### 3. Optional: Install Auto-Sync Hooks
 Keep your board updated automatically whenever you push or pull code.
 ```bash
 player2-kanban hook install <project_id>
@@ -131,6 +150,7 @@ player2-kanban ticket create --project <id> --title "Investigate flaky test" --d
 
 | Command | Description |
 |---------|-------------|
+| `open [--port N] [--no-browser]` | Start/reuse Player2 and open your browser |
 | `start [--port N] [--foreground]` | Start the web UI server (default: port 3010) |
 | `stop` | Stop the running server |
 | `mcp` | Start the MCP server (stdin/stdout) |
@@ -200,3 +220,36 @@ Based on [Taskboard](https://github.com/tcarac/taskboard) by tcarac.
 ## License
 
 [MIT](LICENSE)
+
+## Observable agent workflow (rebuild)
+
+```bash
+player2-kanban start
+player2-kanban status
+player2-kanban agent-config install all
+player2-kanban activity TICKET_ID --agent Codex --session RUN_ID --summary "Investigating"
+player2-kanban ticket move TICKET_ID --status in_progress
+# Heartbeat at milestones and at least every five minutes.
+player2-kanban ticket move TICKET_ID --status review
+# Only after merge:
+player2-kanban ticket complete TICKET_ID --evidence https://github.com/OWNER/REPO/pull/NUMBER
+```
+
+Use the actual ticket ID, not its display key. Configure `player2-kanban mcp` in
+agent clients. Set `GITHUB_TOKEN` in the server environment for background sync and
+in CLI/MCP environments when verifying completion. All processes must share the
+same `--db` when a custom database is used. The board refreshes every five seconds.
+The server is local-only; remote agents need a separately configured workspace.
+
+Conflicts preserve both versions until you choose one in the ticket panel. Failed
+sync appears on the board and can be retried. Stale activity does not automatically
+close a task. See [supported sync fields and limitations](docs/rebuild.md).
+
+To prevent a locally launched agent from skipping tracking, wrap its command:
+```bash
+player2-kanban run --ticket TICKET_ID --agent Codex -- codex
+# Or pass another installed agent command and its arguments after --.
+```
+The launcher claims the task, sends process heartbeats every minute, and moves
+In Progress to Review on successful exit or Blocked on failure. It never marks
+Done from an exit code. Remote/cloud agents still need their own MCP/CLI connection.

@@ -1,20 +1,22 @@
 {
   "name": "player2-kanban",
-  "version": "1.1.0",
+  "version": "2.0.0-beta.1",
   "description": "Agent-native local project management with GitHub sync and MCP",
   "repository": {
     "type": "git",
     "url": "https://github.com/Tristan578/taskboard.git"
   },
   "bin": {
-    "player2-kanban": "./bin/player2-kanban"
+    "player2-kanban": "./scripts/run.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "test": "node --test scripts/*.test.js"
   },
   "files": [
     "bin/",
-    "scripts/install.js"
+    "scripts/install.js",
+    "scripts/run.js"
   ],
   "author": "Player2 AI",
   "license": "MIT"

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -22,22 +23,10 @@ import (
 )
 
 func setupTestServer(t *testing.T) (*Server, *db.Store, func()) {
-	database, err := sql.Open("sqlite", ":memory:")
+	database, err := db.OpenAt(t.TempDir() + "/test.db")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Comprehensive schema for server tests
-	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
-		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
-		CREATE TABLE subtasks (id TEXT PRIMARY KEY, ticket_id TEXT, title TEXT, completed BOOLEAN DEFAULT 0, position INTEGER);
-		CREATE TABLE ticket_labels (ticket_id TEXT, label_id TEXT, PRIMARY KEY (ticket_id, label_id));
-		CREATE TABLE ticket_dependencies (ticket_id TEXT, blocked_by_id TEXT, PRIMARY KEY (ticket_id, blocked_by_id));
-	`)
 
 	store := db.NewStore(database)
 	s := New(store, nil)
@@ -50,39 +39,49 @@ func TestServer_Projects(t *testing.T) {
 
 	// 1. Create
 	body, _ := json.Marshal(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	req := httptest.NewRequest("POST", "/api/projects", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/projects", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Create project failed: %d", w.Code) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("Create project failed: %d", w.Code)
+	}
 
 	var project models.Project
 	_ = json.Unmarshal(w.Body.Bytes(), &project)
 
 	// 2. List
-	req = httptest.NewRequest("GET", "/api/projects", nil)
+	req = localRequest("GET", "/api/projects", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("List projects failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("List projects failed")
+	}
 
 	// 3. Get
-	req = httptest.NewRequest("GET", "/api/projects/"+project.ID, nil)
+	req = localRequest("GET", "/api/projects/"+project.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Get project failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Get project failed")
+	}
 
 	// 4. Update
 	newName := "P1 Updated"
 	ub, _ := json.Marshal(models.UpdateProjectRequest{Name: &newName})
-	req = httptest.NewRequest("PUT", "/api/projects/"+project.ID, bytes.NewBuffer(ub))
+	req = localRequest("PUT", "/api/projects/"+project.ID, bytes.NewBuffer(ub))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Update project failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Update project failed")
+	}
 
 	// 5. Delete
-	req = httptest.NewRequest("DELETE", "/api/projects/"+project.ID, nil)
+	req = localRequest("DELETE", "/api/projects/"+project.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent { t.Errorf("Delete project failed") }
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Delete project failed")
+	}
 }
 
 func TestServer_Tickets(t *testing.T) {
@@ -93,46 +92,58 @@ func TestServer_Tickets(t *testing.T) {
 
 	// 1. Create
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Create ticket failed") }
-	
+	if w.Code != http.StatusCreated {
+		t.Errorf("Create ticket failed")
+	}
+
 	var ticket models.Ticket
 	_ = json.Unmarshal(w.Body.Bytes(), &ticket)
 
 	// 2. List
-	req = httptest.NewRequest("GET", "/api/tickets", nil)
+	req = localRequest("GET", "/api/tickets", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("List tickets failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("List tickets failed")
+	}
 
 	// 3. Get
-	req = httptest.NewRequest("GET", "/api/tickets/"+ticket.ID, nil)
+	req = localRequest("GET", "/api/tickets/"+ticket.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Get ticket failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Get ticket failed")
+	}
 
 	// 4. Update
 	newTitle := "T1 Updated"
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{Title: &newTitle})
-	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req = localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Update ticket failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Update ticket failed")
+	}
 
 	// 5. Move
-	mb, _ := json.Marshal(models.MoveTicketRequest{Status: "done"})
-	req = httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(mb))
+	mb, _ := json.Marshal(models.MoveTicketRequest{Status: "review"})
+	req = localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(mb))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Move ticket failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Move ticket failed")
+	}
 
 	// 6. Delete
-	req = httptest.NewRequest("DELETE", "/api/tickets/"+ticket.ID, nil)
+	req = localRequest("DELETE", "/api/tickets/"+ticket.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent { t.Errorf("Delete ticket failed") }
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Delete ticket failed")
+	}
 }
 
 func TestServer_Teams(t *testing.T) {
@@ -140,36 +151,46 @@ func TestServer_Teams(t *testing.T) {
 	defer cleanup()
 
 	body, _ := json.Marshal(models.CreateTeamRequest{Name: "T1"})
-	req := httptest.NewRequest("POST", "/api/teams", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/teams", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Create team failed") }
-	
+	if w.Code != http.StatusCreated {
+		t.Errorf("Create team failed")
+	}
+
 	var team models.Team
 	_ = json.Unmarshal(w.Body.Bytes(), &team)
 
-	req = httptest.NewRequest("GET", "/api/teams", nil)
+	req = localRequest("GET", "/api/teams", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("List teams failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("List teams failed")
+	}
 
-	req = httptest.NewRequest("GET", "/api/teams/"+team.ID, nil)
+	req = localRequest("GET", "/api/teams/"+team.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Get team failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Get team failed")
+	}
 
 	// Update
 	name := "T2"
 	ub, _ := json.Marshal(models.UpdateTeamRequest{Name: &name})
-	req = httptest.NewRequest("PUT", "/api/teams/"+team.ID, bytes.NewBuffer(ub))
+	req = localRequest("PUT", "/api/teams/"+team.ID, bytes.NewBuffer(ub))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Update team failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Update team failed")
+	}
 
-	req = httptest.NewRequest("DELETE", "/api/teams/"+team.ID, nil)
+	req = localRequest("DELETE", "/api/teams/"+team.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent { t.Errorf("Delete team failed") }
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Delete team failed")
+	}
 }
 
 func TestServer_Labels(t *testing.T) {
@@ -177,30 +198,38 @@ func TestServer_Labels(t *testing.T) {
 	defer cleanup()
 
 	body, _ := json.Marshal(models.CreateLabelRequest{Name: "L1", Color: "red"})
-	req := httptest.NewRequest("POST", "/api/labels", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/labels", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Create label failed") }
-	
+	if w.Code != http.StatusCreated {
+		t.Errorf("Create label failed")
+	}
+
 	var label models.Label
 	_ = json.Unmarshal(w.Body.Bytes(), &label)
 
-	req = httptest.NewRequest("GET", "/api/labels", nil)
+	req = localRequest("GET", "/api/labels", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("List labels failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("List labels failed")
+	}
 
 	name := "L2"
 	ub, _ := json.Marshal(models.UpdateLabelRequest{Name: &name})
-	req = httptest.NewRequest("PUT", "/api/labels/"+label.ID, bytes.NewBuffer(ub))
+	req = localRequest("PUT", "/api/labels/"+label.ID, bytes.NewBuffer(ub))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Update label failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Update label failed")
+	}
 
-	req = httptest.NewRequest("DELETE", "/api/labels/"+label.ID, nil)
+	req = localRequest("DELETE", "/api/labels/"+label.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent { t.Errorf("Delete label failed") }
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Delete label failed")
+	}
 }
 
 func TestServer_Subtasks(t *testing.T) {
@@ -212,25 +241,31 @@ func TestServer_Subtasks(t *testing.T) {
 
 	// 1. Add Subtask
 	body, _ := json.Marshal(models.CreateSubtaskRequest{Title: "Sub 1"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/subtasks", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/subtasks", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("Add subtask failed") }
-	
+	if w.Code != http.StatusCreated {
+		t.Errorf("Add subtask failed")
+	}
+
 	var st models.Subtask
 	_ = json.Unmarshal(w.Body.Bytes(), &st)
 
 	// 2. Toggle
-	req = httptest.NewRequest("POST", "/api/subtasks/"+st.ID+"/toggle", nil)
+	req = localRequest("POST", "/api/subtasks/"+st.ID+"/toggle", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Toggle subtask failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Toggle subtask failed")
+	}
 
 	// 3. Delete
-	req = httptest.NewRequest("DELETE", "/api/subtasks/"+st.ID, nil)
+	req = localRequest("DELETE", "/api/subtasks/"+st.ID, nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent { t.Errorf("Delete subtask failed") }
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Delete subtask failed")
+	}
 }
 
 func TestServer_Board(t *testing.T) {
@@ -238,10 +273,12 @@ func TestServer_Board(t *testing.T) {
 	defer cleanup()
 
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
-	req := httptest.NewRequest("GET", "/api/board?projectId="+p.ID, nil)
+	req := localRequest("GET", "/api/board?projectId="+p.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("Get board failed") }
+	if w.Code != http.StatusOK {
+		t.Errorf("Get board failed")
+	}
 }
 
 func TestServer_Strict_Enforcement(t *testing.T) {
@@ -252,19 +289,23 @@ func TestServer_Strict_Enforcement(t *testing.T) {
 	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
 
 	// 1. Move draft to todo should fail if missing US/AC
-	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "todo"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "in_progress"})
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 when moving draft out") }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when moving draft out")
+	}
 
 	// 2. Update to non-draft should fail if missing specs
 	isDraft := false
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
-	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req = localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 when converting to non-draft") }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when converting to non-draft")
+	}
 }
 
 func TestServer_Recoverer(t *testing.T) {
@@ -272,22 +313,26 @@ func TestServer_Recoverer(t *testing.T) {
 	defer cleanup()
 
 	s.router.Get("/panic", func(w http.ResponseWriter, r *http.Request) { panic("test panic") })
-	req := httptest.NewRequest("GET", "/panic", nil)
+	req := localRequest("GET", "/panic", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusInternalServerError { t.Errorf("Expected 500 for panic") }
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 for panic")
+	}
 }
 
 func TestServer_CORS(t *testing.T) {
 	s, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	req := httptest.NewRequest("OPTIONS", "/api/projects", nil)
+	req := localRequest("OPTIONS", "/api/projects", nil)
 	req.Header.Set("Origin", "http://example.com")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusNoContent { t.Errorf("CORS failed: %d", w.Code) }
+	if w.Code != http.StatusForbidden {
+		t.Errorf("CORS failed: %d", w.Code)
+	}
 }
 
 func TestServer_ErrorPaths(t *testing.T) {
@@ -328,16 +373,20 @@ func TestServer_ErrorPaths(t *testing.T) {
 		} else {
 			bodyBuf = bytes.NewBuffer(nil)
 		}
-		req := httptest.NewRequest(tt.method, tt.url, bodyBuf)
+		req := localRequest(tt.method, tt.url, bodyBuf)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, req)
-		if w.Code != tt.code { t.Errorf("%s %s expected %d, got %d", tt.method, tt.url, tt.code, w.Code) }
+		if w.Code != tt.code {
+			t.Errorf("%s %s expected %d, got %d", tt.method, tt.url, tt.code, w.Code)
+		}
 	}
 
-	badJSON := httptest.NewRequest("POST", "/api/projects", bytes.NewBufferString("{invalid"))
+	badJSON := localRequest("POST", "/api/projects", bytes.NewBufferString("{invalid"))
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, badJSON)
-	if rec.Code != http.StatusBadRequest { t.Errorf("Expected 400 for malformed JSON") }
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for malformed JSON")
+	}
 }
 
 func TestServer_InternalErrors(t *testing.T) {
@@ -348,7 +397,7 @@ func TestServer_InternalErrors(t *testing.T) {
 	label, _ := store.CreateLabel(models.CreateLabelRequest{Name: "L", Color: "C"})
 	st, _ := store.AddSubtask(tick.ID, models.CreateSubtaskRequest{Title: "S"})
 
-	_ = store.Close() 
+	_ = store.Close()
 
 	tests := []struct {
 		method string
@@ -356,23 +405,23 @@ func TestServer_InternalErrors(t *testing.T) {
 		body   interface{}
 	}{
 		{"GET", "/api/projects", nil},
-		{"GET", "/api/projects/"+p.ID, nil},
+		{"GET", "/api/projects/" + p.ID, nil},
 		{"POST", "/api/projects", map[string]string{"name": "P", "prefix": "P"}},
-		{"PUT", "/api/projects/"+p.ID, map[string]string{"name": "P"}},
+		{"PUT", "/api/projects/" + p.ID, map[string]string{"name": "P"}},
 		{"GET", "/api/teams", nil},
-		{"GET", "/api/teams/"+team.ID, nil},
+		{"GET", "/api/teams/" + team.ID, nil},
 		{"POST", "/api/teams", map[string]string{"name": "T"}},
-		{"PUT", "/api/teams/"+team.ID, map[string]string{"name": "T"}},
+		{"PUT", "/api/teams/" + team.ID, map[string]string{"name": "T"}},
 		{"GET", "/api/tickets", nil},
-		{"GET", "/api/tickets/"+tick.ID, nil},
+		{"GET", "/api/tickets/" + tick.ID, nil},
 		{"POST", "/api/tickets", map[string]string{"projectId": p.ID, "title": "T"}},
-		{"PUT", "/api/tickets/"+tick.ID, map[string]string{"title": "T"}},
-		{"POST", "/api/tickets/"+tick.ID+"/move", map[string]string{"status": "done"}},
-		{"POST", "/api/tickets/"+tick.ID+"/subtasks", map[string]string{"title": "S"}},
-		{"POST", "/api/subtasks/"+st.ID+"/toggle", nil},
+		{"PUT", "/api/tickets/" + tick.ID, map[string]string{"title": "T"}},
+		{"POST", "/api/tickets/" + tick.ID + "/move", map[string]string{"status": "done"}},
+		{"POST", "/api/tickets/" + tick.ID + "/subtasks", map[string]string{"title": "S"}},
+		{"POST", "/api/subtasks/" + st.ID + "/toggle", nil},
 		{"GET", "/api/labels", nil},
 		{"POST", "/api/labels", map[string]string{"name": "L", "color": "C"}},
-		{"PUT", "/api/labels/"+label.ID, map[string]string{"name": "L"}},
+		{"PUT", "/api/labels/" + label.ID, map[string]string{"name": "L"}},
 		{"GET", "/api/board", nil},
 	}
 
@@ -384,10 +433,12 @@ func TestServer_InternalErrors(t *testing.T) {
 		} else {
 			bodyBuf = bytes.NewBuffer(nil)
 		}
-		req := httptest.NewRequest(tt.method, tt.url, bodyBuf)
+		req := localRequest(tt.method, tt.url, bodyBuf)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, req)
-		if w.Code != http.StatusInternalServerError { t.Errorf("%s %s expected 500, got %d", tt.method, tt.url, w.Code) }
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("%s %s expected 500, got %d", tt.method, tt.url, w.Code)
+		}
 	}
 	cleanup()
 }
@@ -399,20 +450,22 @@ func TestServer_TerminalWS_Full(t *testing.T) {
 	defer ts.Close()
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/terminal/ws"
 	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
-	if err != nil { return }
-	
+	if err != nil {
+		return
+	}
+
 	// 1. Resize
 	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"resize","cols":80,"rows":24}`))
-	
+
 	// 2. Input
 	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"input","data":"ls\n"}`))
-	
+
 	// 3. Unknown type
 	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"unknown"}`))
-	
+
 	// 4. Invalid JSON
 	_ = ws.WriteMessage(websocket.TextMessage, []byte(`{invalid}`))
-	
+
 	_ = ws.Close()
 }
 
@@ -427,7 +480,7 @@ func TestServer_StrictMode_CreateNonDraftWithoutUSAC(t *testing.T) {
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "Strict", Prefix: "STR", Strict: true})
 
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: false})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -442,7 +495,7 @@ func TestServer_StrictMode_CreateDraftWithoutUSAC(t *testing.T) {
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "Strict", Prefix: "STR", Strict: true})
 
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -463,7 +516,7 @@ func TestServer_StrictMode_CreateNonDraftWithUSAC(t *testing.T) {
 		UserStory:          "As a user...",
 		AcceptanceCriteria: "Given... When... Then...",
 	})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -482,7 +535,7 @@ func TestServer_StrictMode_UpdateDraftToNonDraftWithUSAC(t *testing.T) {
 	us := "As a user..."
 	ac := "Given... When... Then..."
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{UserStory: &us, AcceptanceCriteria: &ac})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -492,7 +545,7 @@ func TestServer_StrictMode_UpdateDraftToNonDraftWithUSAC(t *testing.T) {
 	// Now convert to non-draft
 	isDraft := false
 	updateBody2, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
-	req = httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody2))
+	req = localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody2))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -515,7 +568,7 @@ func TestServer_StrictMode_ClearUSWhileNonDraft(t *testing.T) {
 
 	emptyUS := ""
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{UserStory: &emptyUS})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -536,7 +589,7 @@ func TestServer_SyncJob_CreateNonDraftInGithubProject(t *testing.T) {
 	})
 
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1"})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -561,7 +614,7 @@ func TestServer_SyncJob_CreateDraftInGithubProject(t *testing.T) {
 	})
 
 	body, _ := json.Marshal(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
-	req := httptest.NewRequest("POST", "/api/tickets", bytes.NewBuffer(body))
+	req := localRequest("POST", "/api/tickets", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -591,7 +644,7 @@ func TestServer_SyncJob_UpdateNonDraftInGithubProject(t *testing.T) {
 
 	newTitle := "Updated"
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{Title: &newTitle})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -616,8 +669,8 @@ func TestServer_SyncJob_MoveDraftInGithubProject(t *testing.T) {
 	})
 	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: true})
 
-	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "todo"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "in_progress"})
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -659,7 +712,7 @@ func TestServer_TicketFilters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", tt.url, nil)
+			req := localRequest("GET", tt.url, nil)
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, req)
 			if w.Code != http.StatusOK {
@@ -690,7 +743,7 @@ func TestServer_ValidationErrors(t *testing.T) {
 		// Create project missing name
 		{"project missing name", "POST", "/api/projects", `{"prefix":"X"}`, http.StatusBadRequest},
 		// Create project missing prefix
-		{"project missing prefix", "POST", "/api/projects", `{"name":"X"}`, http.StatusBadRequest},
+		{"project generates prefix", "POST", "/api/projects", `{"name":"X"}`, http.StatusCreated},
 		// Create label missing name
 		{"label missing name", "POST", "/api/labels", `{"color":"red"}`, http.StatusBadRequest},
 		// Create label missing color
@@ -711,7 +764,7 @@ func TestServer_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.url, bytes.NewBufferString(tt.body))
+			req := localRequest(tt.method, tt.url, bytes.NewBufferString(tt.body))
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, req)
 			if w.Code != tt.code {
@@ -753,7 +806,7 @@ func TestServer_BoardWithoutProjectId(t *testing.T) {
 	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 	_, _ = store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", Status: "todo"})
 
-	req := httptest.NewRequest("GET", "/api/board", nil)
+	req := localRequest("GET", "/api/board", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -771,7 +824,7 @@ func TestServer_ListProjectsWithStatusFilter(t *testing.T) {
 
 	_, _ = store.CreateProject(models.CreateProjectRequest{Name: "P1", Prefix: "P1"})
 
-	req := httptest.NewRequest("GET", "/api/projects?status=active", nil)
+	req := localRequest("GET", "/api/projects?status=active", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -791,8 +844,9 @@ func TestServer_WebFS_SPA(t *testing.T) {
 	defer database.Close()
 
 	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE tickets (repeat_rule TEXT NOT NULL DEFAULT '', repeat_anchor INTEGER NOT NULL DEFAULT 0, repeat_source_id TEXT, revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
 		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
@@ -806,7 +860,7 @@ func TestServer_WebFS_SPA(t *testing.T) {
 	srv := New(store, webFS)
 
 	// Request for known static file (style.css)
-	req := httptest.NewRequest("GET", "/style.css", nil)
+	req := localRequest("GET", "/style.css", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -818,7 +872,7 @@ func TestServer_WebFS_SPA(t *testing.T) {
 
 	// Unknown path should fall back to index.html (SPA routing)
 	// The server rewrites URL to "/" which serves index.html via the file server
-	req = httptest.NewRequest("GET", "/some/unknown/path", nil)
+	req = localRequest("GET", "/some/unknown/path", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	// SPA fallback: path is rewritten to "/" which serves index.html
@@ -854,7 +908,7 @@ func TestServer_DeleteInternalErrors(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		req := httptest.NewRequest(tt.method, tt.url, nil)
+		req := localRequest(tt.method, tt.url, nil)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, req)
 		if w.Code != http.StatusInternalServerError {
@@ -954,10 +1008,12 @@ type mockDirEntry struct {
 	size int64
 }
 
-func (e *mockDirEntry) Name() string               { return e.name }
-func (e *mockDirEntry) IsDir() bool                 { return false }
-func (e *mockDirEntry) Type() fs.FileMode           { return 0 }
-func (e *mockDirEntry) Info() (fs.FileInfo, error)   { return &mockFileInfo{name: e.name, size: e.size, isDir: false}, nil }
+func (e *mockDirEntry) Name() string      { return e.name }
+func (e *mockDirEntry) IsDir() bool       { return false }
+func (e *mockDirEntry) Type() fs.FileMode { return 0 }
+func (e *mockDirEntry) Info() (fs.FileInfo, error) {
+	return &mockFileInfo{name: e.name, size: e.size, isDir: false}, nil
+}
 
 type mockFileInfo struct {
 	name  string
@@ -965,12 +1021,17 @@ type mockFileInfo struct {
 	isDir bool
 }
 
-func (fi *mockFileInfo) Name() string        { return fi.name }
-func (fi *mockFileInfo) Size() int64         { return fi.size }
-func (fi *mockFileInfo) Mode() fs.FileMode   { if fi.isDir { return fs.ModeDir | 0555 }; return 0444 }
-func (fi *mockFileInfo) ModTime() time.Time  { return time.Time{} }
-func (fi *mockFileInfo) IsDir() bool         { return fi.isDir }
-func (fi *mockFileInfo) Sys() interface{}    { return nil }
+func (fi *mockFileInfo) Name() string { return fi.name }
+func (fi *mockFileInfo) Size() int64  { return fi.size }
+func (fi *mockFileInfo) Mode() fs.FileMode {
+	if fi.isDir {
+		return fs.ModeDir | 0555
+	}
+	return 0444
+}
+func (fi *mockFileInfo) ModTime() time.Time { return time.Time{} }
+func (fi *mockFileInfo) IsDir() bool        { return fi.isDir }
+func (fi *mockFileInfo) Sys() interface{}   { return nil }
 
 // ============================================================
 // Additional coverage: nil-to-empty-slice branches for list endpoints
@@ -981,7 +1042,7 @@ func TestServer_EmptyLists(t *testing.T) {
 	defer cleanup()
 
 	// List projects on empty DB (covers nil -> []models.Project{} branch)
-	req := httptest.NewRequest("GET", "/api/projects", nil)
+	req := localRequest("GET", "/api/projects", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -989,7 +1050,7 @@ func TestServer_EmptyLists(t *testing.T) {
 	}
 
 	// List teams on empty DB (covers nil -> []models.Team{} branch)
-	req = httptest.NewRequest("GET", "/api/teams", nil)
+	req = localRequest("GET", "/api/teams", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -997,7 +1058,7 @@ func TestServer_EmptyLists(t *testing.T) {
 	}
 
 	// List labels on empty DB (covers nil -> []models.Label{} branch)
-	req = httptest.NewRequest("GET", "/api/labels", nil)
+	req = localRequest("GET", "/api/labels", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1005,7 +1066,7 @@ func TestServer_EmptyLists(t *testing.T) {
 	}
 
 	// List tickets on empty DB (covers nil -> []models.Ticket{} branch)
-	req = httptest.NewRequest("GET", "/api/tickets", nil)
+	req = localRequest("GET", "/api/tickets", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1028,8 +1089,8 @@ func TestServer_SyncJob_MoveNonDraftInGithubProject(t *testing.T) {
 	// Create a non-draft ticket
 	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "T1", IsDraft: false})
 
-	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "done"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "review"})
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1054,8 +1115,8 @@ func TestServer_StrictMode_MoveDraftWithUSAC(t *testing.T) {
 		AcceptanceCriteria: "Given...",
 	})
 
-	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "todo"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "in_progress"})
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1076,7 +1137,7 @@ func TestServer_UpdateTicket_NonStrictProject(t *testing.T) {
 
 	isDraft := false
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1101,8 +1162,8 @@ func TestServer_StrictMode_MoveNonDraft(t *testing.T) {
 		AcceptanceCriteria: "Given...",
 	})
 
-	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "done"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "review"})
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1124,8 +1185,9 @@ func setupTestServerWithDB(t *testing.T) (*Server, *db.Store, *sql.DB, func()) {
 	}
 
 	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE tickets (repeat_rule TEXT NOT NULL DEFAULT '', repeat_anchor INTEGER NOT NULL DEFAULT 0, repeat_source_id TEXT, revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
 		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
@@ -1151,7 +1213,7 @@ func TestServer_DeleteProject_InternalError(t *testing.T) {
 	// with a trigger that fails on delete.
 	_, _ = database.Exec("CREATE TRIGGER prevent_project_delete BEFORE DELETE ON projects BEGIN SELECT RAISE(ABORT, 'delete blocked'); END;")
 
-	req := httptest.NewRequest("DELETE", "/api/projects/"+p.ID, nil)
+	req := localRequest("DELETE", "/api/projects/"+p.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1166,7 +1228,7 @@ func TestServer_DeleteTeam_InternalError(t *testing.T) {
 	team, _ := store.CreateTeam(models.CreateTeamRequest{Name: "T"})
 	_, _ = database.Exec("CREATE TRIGGER prevent_team_delete BEFORE DELETE ON teams BEGIN SELECT RAISE(ABORT, 'delete blocked'); END;")
 
-	req := httptest.NewRequest("DELETE", "/api/teams/"+team.ID, nil)
+	req := localRequest("DELETE", "/api/teams/"+team.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1183,7 +1245,7 @@ func TestServer_DeleteTicket_InternalError(t *testing.T) {
 	// Soft delete uses UPDATE, not DELETE, so we need to block updates
 	_, _ = database.Exec("CREATE TRIGGER prevent_ticket_update BEFORE UPDATE ON tickets BEGIN SELECT RAISE(ABORT, 'update blocked'); END;")
 
-	req := httptest.NewRequest("DELETE", "/api/tickets/"+ticket.ID, nil)
+	req := localRequest("DELETE", "/api/tickets/"+ticket.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1198,7 +1260,7 @@ func TestServer_DeleteLabel_InternalError(t *testing.T) {
 	label, _ := store.CreateLabel(models.CreateLabelRequest{Name: "L", Color: "C"})
 	_, _ = database.Exec("CREATE TRIGGER prevent_label_delete BEFORE DELETE ON labels BEGIN SELECT RAISE(ABORT, 'delete blocked'); END;")
 
-	req := httptest.NewRequest("DELETE", "/api/labels/"+label.ID, nil)
+	req := localRequest("DELETE", "/api/labels/"+label.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1215,7 +1277,7 @@ func TestServer_DeleteSubtask_InternalError(t *testing.T) {
 	st, _ := store.AddSubtask(ticket.ID, models.CreateSubtaskRequest{Title: "S"})
 	_, _ = database.Exec("CREATE TRIGGER prevent_subtask_delete BEFORE DELETE ON subtasks BEGIN SELECT RAISE(ABORT, 'delete blocked'); END;")
 
-	req := httptest.NewRequest("DELETE", "/api/subtasks/"+st.ID, nil)
+	req := localRequest("DELETE", "/api/subtasks/"+st.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1237,8 +1299,8 @@ func TestServer_MoveTicket_InternalError(t *testing.T) {
 	// Block updates so MoveTicket fails
 	_, _ = database.Exec("CREATE TRIGGER prevent_ticket_update BEFORE UPDATE ON tickets BEGIN SELECT RAISE(ABORT, 'update blocked'); END;")
 
-	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "done"})
-	req := httptest.NewRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
+	moveBody, _ := json.Marshal(models.MoveTicketRequest{Status: "review"})
+	req := localRequest("POST", "/api/tickets/"+ticket.ID+"/move", bytes.NewBuffer(moveBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1257,7 +1319,7 @@ func TestServer_UpdateDraftTicket_NoSyncJob(t *testing.T) {
 
 	newTitle := "Updated Draft"
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{Title: &newTitle})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1285,7 +1347,7 @@ func TestServer_UpdateTicket_InternalError(t *testing.T) {
 
 	newTitle := "Updated"
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{Title: &newTitle})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
@@ -1305,8 +1367,9 @@ func TestServer_ListenAndServe(t *testing.T) {
 	defer database.Close()
 
 	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE tickets (repeat_rule TEXT NOT NULL DEFAULT '', repeat_anchor INTEGER NOT NULL DEFAULT 0, repeat_source_id TEXT, revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
 		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
@@ -1367,7 +1430,7 @@ func TestServer_UpdateTicket_StrictModeReject(t *testing.T) {
 	// Try to un-draft without US/AC → should get 400
 	isDraft := false
 	updateBody, _ := json.Marshal(models.UpdateTicketRequest{IsDraft: &isDraft})
-	req := httptest.NewRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
+	req := localRequest("PUT", "/api/tickets/"+ticket.ID, bytes.NewBuffer(updateBody))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -1430,7 +1493,7 @@ func TestServer_ListTickets_Pagination(t *testing.T) {
 	}
 
 	// Without pagination - returns flat array
-	req := httptest.NewRequest("GET", "/api/tickets?projectId="+p.ID, nil)
+	req := localRequest("GET", "/api/tickets?projectId="+p.ID, nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1438,7 +1501,7 @@ func TestServer_ListTickets_Pagination(t *testing.T) {
 	}
 
 	// With pagination - returns PaginatedResult
-	req = httptest.NewRequest("GET", "/api/tickets?projectId="+p.ID+"&limit=2&offset=0", nil)
+	req = localRequest("GET", "/api/tickets?projectId="+p.ID+"&limit=2&offset=0", nil)
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1473,7 +1536,7 @@ func TestServer_ListProjects_Pagination(t *testing.T) {
 		})
 	}
 
-	req := httptest.NewRequest("GET", "/api/projects?limit=2&offset=0", nil)
+	req := localRequest("GET", "/api/projects?limit=2&offset=0", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1504,7 +1567,7 @@ func TestServer_RequestLoggerMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 
-	req := httptest.NewRequest("GET", "/test/path", nil)
+	req := localRequest("GET", "/test/path", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1555,10 +1618,10 @@ func TestServer_LogLevelFiltering(t *testing.T) {
 }
 
 func TestServer_HealthCheck(t *testing.T) {
-	srv, _, cleanup := setupTestServer(t)
+	srv, store, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	req := httptest.NewRequest("GET", "/api/health", nil)
+	req := localRequest("GET", "/api/health", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -1573,6 +1636,10 @@ func TestServer_HealthCheck(t *testing.T) {
 	if resp["status"] != "ok" {
 		t.Errorf("expected status=ok, got %v", resp["status"])
 	}
+	path, err := store.DatabasePath()
+	if err != nil || resp["databasePath"] != path || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("health must identify the actual database without caching", resp, err)
+	}
 	if _, ok := resp["uptime"]; !ok {
 		t.Error("expected uptime field in response")
 	}
@@ -1586,7 +1653,7 @@ func TestServer_SyncStatus(t *testing.T) {
 	proj, _ := store.CreateProject(models.CreateProjectRequest{Name: "SyncProj", Prefix: "SS"})
 	_ = store.QueueSyncJob(proj.ID, "", "full_sync", nil)
 
-	req := httptest.NewRequest("GET", "/api/sync/status", nil)
+	req := localRequest("GET", "/api/sync/status", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -1612,8 +1679,9 @@ func TestServer_HealthCheck_Degraded(t *testing.T) {
 	}
 
 	_, _ = database.Exec(`
-		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME);
-		CREATE TABLE tickets (id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE work_state (ticket_id TEXT PRIMARY KEY, agent TEXT DEFAULT '',session_id TEXT DEFAULT '',heartbeat_at DATETIME,summary TEXT DEFAULT '',completion_url TEXT DEFAULT '',completed_at DATETIME,conflict TEXT DEFAULT '');
+ CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, prefix TEXT UNIQUE, description TEXT, icon TEXT, color TEXT, status TEXT, github_repo TEXT, github_last_synced DATETIME, strict BOOLEAN DEFAULT 0, completion_policy TEXT DEFAULT 'verified', created_at DATETIME, updated_at DATETIME);
+		CREATE TABLE tickets (repeat_rule TEXT NOT NULL DEFAULT '', repeat_anchor INTEGER NOT NULL DEFAULT 0, repeat_source_id TEXT, revision INTEGER NOT NULL DEFAULT 0, id TEXT PRIMARY KEY, project_id TEXT, team_id TEXT, number INTEGER, title TEXT, description TEXT, status TEXT, priority TEXT, due_date DATETIME, position REAL, lexo_rank TEXT, github_issue_number INTEGER, github_last_synced_at DATETIME, github_last_synced_sha TEXT DEFAULT '', user_story TEXT DEFAULT '', acceptance_criteria TEXT DEFAULT '', technical_details TEXT DEFAULT '', testing_details TEXT DEFAULT '', is_draft BOOLEAN DEFAULT 0, deleted_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE sync_jobs (id TEXT PRIMARY KEY, project_id TEXT, ticket_id TEXT, action TEXT, payload TEXT, status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0, last_error TEXT, next_retry_at DATETIME, created_at DATETIME, updated_at DATETIME);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, color TEXT, created_at DATETIME);
 		CREATE TABLE labels (id TEXT PRIMARY KEY, name TEXT, color TEXT);
@@ -1628,7 +1696,7 @@ func TestServer_HealthCheck_Degraded(t *testing.T) {
 	// Close the DB to simulate degraded state
 	database.Close()
 
-	req := httptest.NewRequest("GET", "/api/health", nil)
+	req := localRequest("GET", "/api/health", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -1646,3 +1714,9 @@ func TestServer_HealthCheck_Degraded(t *testing.T) {
 }
 
 // ============================================================
+
+func localRequest(method, target string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, target, body)
+	r.Host = "localhost:3010"
+	return r
+}
