@@ -41,6 +41,17 @@ func TestReconciliationLifecycle(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}}}}})
 			return
 		}
+		if r.Method == "GET" {
+			n := 0
+			_, _ = fmt.Sscanf(r.URL.Path, "/repos/o/r/issues/%d", &n)
+			i, ok := issues[n]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": i.Number, "title": i.Title, "body": i.Body, "state": i.State})
+			return
+		}
 		if failWrites {
 			w.WriteHeader(503)
 			return
@@ -197,5 +208,78 @@ func TestRetryAdoptsRemoteIssueByStableIdentity(t *testing.T) {
 	tickets, _, _ := store.ListTickets(models.TicketFilter{ProjectID: p.ID})
 	if creates != 0 || len(tickets) != 1 || tickets[0].GitHubIssueNumber == nil || *tickets[0].GitHubIssueNumber != 9 {
 		t.Fatalf("duplicate issue or ticket: creates=%d tickets=%v", creates, tickets)
+	}
+}
+
+// A GitHub edit made after the issue listing but before the push is preserved
+// as a conflict rather than overwritten with the older local version.
+func TestPushRechecksRemoteBeforeOverwriting(t *testing.T) {
+	database, err := db.OpenAt(t.TempDir() + "/race.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := db.NewStore(database)
+	p, _ := store.CreateProject(models.CreateProjectRequest{Name: "Race", Prefix: "RC", GitHubRepo: "o/r"})
+	ticket, _ := store.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "Initial"})
+	issues := map[int]Issue{}
+	stale := map[int]Issue{}
+	listStale := false
+	writes := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/graphql" {
+			source := issues
+			if listStale {
+				source = stale
+			}
+			nodes := []map[string]any{}
+			for _, i := range source {
+				nodes = append(nodes, map[string]any{"number": i.Number, "title": i.Title, "body": i.Body, "state": strings.ToUpper(i.State), "updatedAt": "2026-01-01T00:00:00Z", "labels": map[string]any{"nodes": []any{}}})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+			return
+		}
+		n := 1
+		_, _ = fmt.Sscanf(r.URL.Path, "/repos/o/r/issues/%d", &n)
+		if r.Method == "GET" {
+			i := issues[n]
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": i.Number, "title": i.Title, "body": i.Body, "state": i.State})
+			return
+		}
+		var input struct{ Title, Body, State string }
+		_ = json.NewDecoder(r.Body).Decode(&input)
+		if input.State == "" {
+			input.State = "open"
+		}
+		issues[n] = Issue{Number: n, Title: input.Title, Body: input.Body, State: input.State}
+		writes++
+		_ = json.NewEncoder(w).Encode(map[string]any{"number": n})
+	}))
+	defer srv.Close()
+	client := NewClientWithURLs(context.Background(), "token", srv.URL, srv.URL+"/graphql")
+	if err := SyncProject(context.Background(), client, store, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The listing returns the acknowledged version while GitHub already holds a newer edit.
+	stale[1] = issues[1]
+	remote := issues[1]
+	remote.Title = "Teammate edit"
+	issues[1] = remote
+	listStale = true
+	title := "Local edit"
+	if _, err := store.UpdateTicket(ticket.ID, models.UpdateTicketRequest{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	before := writes
+	if err := SyncProject(context.Background(), client, store, p.ID); err == nil {
+		t.Fatal("push overwrote a concurrent GitHub edit")
+	}
+	if writes != before || issues[1].Title != "Teammate edit" {
+		t.Fatal("remote edit lost")
+	}
+	current, _ := store.GetTicket(ticket.ID)
+	if current.Title != title || current.Work == nil || current.Work.Conflict == "" {
+		t.Fatal("conflict not preserved")
 	}
 }

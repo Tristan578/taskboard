@@ -645,7 +645,24 @@ func (s *Store) MoveTicket(id string, req models.MoveTicketRequest) (*models.Tic
 		return nil, fmt.Errorf("ticket not found")
 	}
 	draft := t.IsDraft && req.Status == "todo"
-	return s.UpdateTicket(id, models.UpdateTicketRequest{Status: &req.Status, Position: req.Position, IsDraft: &draft, ExpectedRevision: req.ExpectedRevision})
+	position := t.Position
+	if req.Position != nil {
+		position = *req.Position
+	} else if req.Status != t.Status {
+		// A move without an explicit position lands after the destination
+		// column's last task in this board.
+		if err := s.db.QueryRow("SELECT COALESCE(MAX(position), 0) + 1000 FROM tickets WHERE project_id = ? AND status = ? AND id != ? AND deleted_at IS NULL", t.ProjectID, req.Status, id).Scan(&position); err != nil {
+			return nil, err
+		}
+	}
+	update := models.UpdateTicketRequest{Status: &req.Status, IsDraft: &draft, ExpectedRevision: req.ExpectedRevision}
+	if req.Position != nil || req.Status != t.Status {
+		// Board order is read from lexo_rank, so it must follow the new position.
+		lexoRank := fmt.Sprintf("%010d", int(position))
+		update.Position = &position
+		update.LexoRank = &lexoRank
+	}
+	return s.UpdateTicket(id, update)
 }
 
 func (s *Store) DeleteTicket(id string, expected ...int) error {
@@ -1037,6 +1054,20 @@ func (s *Store) batchGetTicketBlockedBy(ids []string) (map[string][]string, erro
 	return result, nil
 }
 
+// RequestSync queues sync work for an explicit request (a person or agent asked
+// for it). Unlike the periodic reconcile, which stops after a job exhausts its
+// automatic retries, an explicit request revives that job so it runs again; its
+// last error stays visible until the retry succeeds.
+func (s *Store) RequestSync(projectID string) error {
+	if _, err := s.db.Exec("UPDATE sync_jobs SET status='pending',attempts=0,next_retry_at=NULL,updated_at=? WHERE project_id=? AND status='failed' AND attempts >= 5", time.Now(), projectID); err != nil {
+		return err
+	}
+	return s.QueueSyncJob(projectID, "", "full_sync", nil)
+}
+
+// QueueSyncJob adds a job unless the board already has queued or failed work.
+// An exhausted job still blocks this path so the periodic reconcile cannot retry
+// a broken board forever; task edits (via triggers) and RequestSync revive it.
 func (s *Store) QueueSyncJob(projectID, ticketID, action string, payload any) error {
 	payloadJSON, _ := json.Marshal(payload)
 	_, err := s.db.Exec(

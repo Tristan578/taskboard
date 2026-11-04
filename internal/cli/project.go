@@ -130,7 +130,7 @@ func projectCommands() *cobra.Command {
 			defer func() { _ = store.Close() }()
 
 			if syncAsync {
-				if err := store.QueueSyncJob(args[0], "", "full_sync", nil); err != nil {
+				if err := store.RequestSync(args[0]); err != nil {
 					return err
 				}
 				fmt.Println("Sync job queued.")

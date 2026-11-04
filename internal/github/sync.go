@@ -232,6 +232,22 @@ func SyncProject(ctx context.Context, client *Client, store SyncStore, projectID
 				record(fmt.Errorf("ticket changed during sync; retry"))
 				continue
 			}
+			// The issue list may be stale by now. Re-read this issue right before
+			// writing; if GitHub changed since the saved baseline, keep both
+			// versions as a conflict instead of overwriting the remote edit.
+			// GitHub offers no conditional issue update, so a write landing in the
+			// moment between this read and the push below is not detectable here.
+			fresh, e := client.GetIssue(ctx, owner, repo, issue.Number)
+			if e != nil {
+				record(e)
+				continue
+			}
+			if issueHash(fresh) != base.Remote {
+				detail, _ := json.Marshal(fresh)
+				record(store.SetConflict(t.ID, string(detail)))
+				record(fmt.Errorf("conflict on %s: GitHub changed during sync; both versions preserved; resolve explicitly", t.ID))
+				continue
+			}
 
 			if e := client.UpdateIssue(ctx, owner, repo, issue.Number, t.Title, FormatIssueBody(t.Description, &t), mapStatusToGHState(t.Status)); e != nil {
 				record(e)

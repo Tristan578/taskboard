@@ -139,6 +139,90 @@ func TestSyncLockAndRetry(t *testing.T) {
 	}
 }
 
+// An exhausted job stops the periodic reconcile, but a task edit or an explicit
+// sync request must still produce runnable work.
+func TestExhaustedSyncJobDoesNotBlockNewEdits(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "Linked", Prefix: "L", GitHubRepo: "o/r"})
+	task, err := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "Task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ := s.GetPendingSyncJobs()
+	if len(jobs) != 1 {
+		t.Fatalf("create did not queue sync: %v", jobs)
+	}
+	if err := s.UpdateSyncJobRetry(jobs[0].ID, 5, "offline", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.QueueSyncJob(p.ID, "", "full_sync", nil); err != nil {
+		t.Fatal(err)
+	}
+	if jobs, _ := s.GetPendingSyncJobs(); len(jobs) != 0 {
+		t.Fatal("periodic reconcile retried an exhausted board")
+	}
+	title := "Edited after access returned"
+	if _, err := s.UpdateTicket(task.ID, models.UpdateTicketRequest{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ = s.GetPendingSyncJobs()
+	if len(jobs) != 1 || jobs[0].Attempts != 0 {
+		t.Fatalf("edit did not create runnable sync work: %v", jobs)
+	}
+	if status, _ := s.GetSyncStatus(); status.PendingJobs != 1 || status.FailedJobs != 0 {
+		t.Fatalf("revived job not reported as pending: %+v", status)
+	}
+	if err := s.UpdateSyncJobRetry(jobs[0].ID, 5, "offline", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RequestSync(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if jobs, _ := s.GetPendingSyncJobs(); len(jobs) != 1 {
+		t.Fatal("explicit sync request did not revive exhausted job")
+	}
+	var total int
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM sync_jobs WHERE project_id=?", p.ID).Scan(&total)
+	if total != 1 {
+		t.Fatalf("revival duplicated jobs: %d", total)
+	}
+}
+
+func TestMoveWithoutPositionAppendsToDestinationColumn(t *testing.T) {
+	s, cleanup := setupTestStore(t)
+	defer cleanup()
+	p, _ := s.CreateProject(models.CreateProjectRequest{Name: "Order", Prefix: "O"})
+	first, _ := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: "first"})
+	for _, title := range []string{"a", "b", "c"} {
+		tk, err := s.CreateTicket(models.CreateTicketRequest{ProjectID: p.ID, Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.MoveTicket(tk.ID, models.MoveTicketRequest{Status: "in_progress"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	moved, err := s.MoveTicket(first.ID, models.MoveTicketRequest{Status: "in_progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	column, _, _ := s.ListTickets(models.TicketFilter{ProjectID: p.ID, Status: "in_progress"})
+	if len(column) != 4 || column[len(column)-1].ID != first.ID {
+		t.Fatalf("moved task not placed last: %+v", column)
+	}
+	for _, other := range column[:3] {
+		if other.Position >= moved.Position {
+			t.Fatalf("position %v not after %v", moved.Position, other.Position)
+		}
+	}
+	pos := float64(500)
+	moved, err = s.MoveTicket(first.ID, models.MoveTicketRequest{Status: "todo", Position: &pos})
+	if err != nil || moved.Position != 500 || moved.LexoRank != "0000000500" {
+		t.Fatalf("explicit position not honored: %+v %v", moved, err)
+	}
+}
+
 func TestStaleSyncRevisionDoesNotOverwriteUserEdit(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()

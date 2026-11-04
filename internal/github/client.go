@@ -177,6 +177,21 @@ func (c *Client) GetIssues(ctx context.Context, owner, repo string) ([]Issue, er
 	return allIssues, nil
 }
 
+// GetIssue reads one issue's current content immediately before a write, so a
+// push can be checked against edits made after the initial issue listing.
+func (c *Client) GetIssue(ctx context.Context, owner, repo string, number int) (Issue, error) {
+	gi, resp, err := c.rest.Issues.Get(ctx, owner, repo, number)
+	if err != nil {
+		return Issue{}, err
+	}
+	storeRateLimit(resp)
+	issue := Issue{Number: gi.GetNumber(), Title: gi.GetTitle(), Body: gi.GetBody(), State: gi.GetState(), UpdatedAt: gi.GetUpdatedAt().Time}
+	for _, label := range gi.Labels {
+		issue.Labels = append(issue.Labels, label.GetName())
+	}
+	return issue, nil
+}
+
 func (c *Client) CreateIssue(ctx context.Context, owner, repo string, title, body string) (int, error) {
 	issue, resp, err := c.rest.Issues.Create(ctx, owner, repo, &github.IssueRequest{
 		Title: &title,
